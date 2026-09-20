@@ -43,7 +43,7 @@ on:
       aws_region:
         description: AWS region used for the credential test
         type: string
-        default: us-east-1
+        default: ap-southeast-2
       audience:
         description: OIDC token audience (must match the IAM trust policy aud)
         type: string
