@@ -49,8 +49,8 @@ on:
         type: string
         default: sts.amazonaws.com
 
-  push:
-    branches: [main]
+#   push:
+#     branches: [main]
 
   pull_request:
 
