@@ -28,6 +28,19 @@
 #     job (not workflow-wide) to keep the default permissions minimal.
 #   * Pull requests coming from forks cannot request an OIDC token and cannot
 #     read secrets, so those runs skip those steps instead of failing.
+#   * Subject (sub) claim format: repositories created on or after 2026-07-15
+#     (or that opted in) use the immutable format
+#       repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/BRANCH
+#     instead of the legacy name-only format repo:OWNER/REPO:ref:...
+#     Trust policies must match the format the repository actually uses, or AWS
+#     returns AccessDenied for sts:AssumeRoleWithWebIdentity. The trust policy
+#     written to the job summary is derived from the real token, so it matches.
+#   * Optional extra: workflow_dispatch -> debug_claims = true additionally runs
+#     github/actions-oidc-debugger for a raw claim dump next to the interpreted
+#     output of step 2. That action was archived on 2025-09-22, so it is pinned
+#     to its v1.0.0 commit and marked continue-on-error. It is a Docker action
+#     (image pull/build) and its audience input is required - the README example
+#     passes the repo owner URL, which does NOT match an AWS trust policy.
 #   * Nothing here writes to the repository; all steps are read-only.
 # =============================================================================
 
@@ -48,6 +61,10 @@ on:
         description: OIDC token audience (must match the IAM trust policy aud)
         type: string
         default: sts.amazonaws.com
+      debug_claims:
+        description: Also run github/actions-oidc-debugger for a raw OIDC claims dump
+        type: boolean
+        default: false
 
 #   push:
 #     branches: [main]
@@ -166,6 +183,60 @@ jobs:
           echo "  environment          -> token.actions.githubusercontent.com:environment"
           echo "  job_workflow_ref     -> token.actions.githubusercontent.com:job_workflow_ref"
 
+          # ----------------------------------------------------------------
+          # The sub claim is what a trust policy matches on, and its format
+          # changed: legacy = repo:OWNER/REPO:... , immutable = repo:OWNER@ID/REPO@ID:...
+          # ----------------------------------------------------------------
+          sub="$(jq -r '.sub' "$RUNNER_TEMP/oidc-claims.json")"
+
+          echo
+          echo "### Subject (sub) claim - use this exact format in the trust policy"
+          echo "  sub claim        : $sub"
+
+          case "$sub" in
+            repo:*)
+              repo_segment="${sub#*:}"
+              repo_segment="${repo_segment%%:*}"
+              echo "  repo segment     : $repo_segment"
+              echo "  StringLike value : repo:${repo_segment}:*"
+
+              case "$repo_segment" in
+                *@*)
+                  echo "  format           : IMMUTABLE (owner ID and repo ID included)"
+                  echo "::warning::Immutable sub format detected. A trust policy condition of 'repo:$GITHUB_REPOSITORY:*' will NEVER match and AWS will return AccessDenied."
+                  echo "           Use: repo:${repo_segment}:*"
+                  ;;
+                *)
+                  echo "  format           : LEGACY name-only"
+                  ;;
+              esac
+              ;;
+            *)
+              # An organization or repository sub-claim template is configured, so
+              # the claim is not the default repo:... shape.
+              echo "  format           : custom sub-claim template (org/repo OIDC customization)"
+              echo "  StringEquals     : $sub"
+              ;;
+          esac
+
+      # -----------------------------------------------------------------------
+      # 2b. Optional raw claims dump via github/actions-oidc-debugger.
+      #     Enable with workflow_dispatch -> debug_claims = true.
+      #     This is the one third-party dependency in the workflow: the action was
+      #     archived on 2025-09-22 (read-only), so it is pinned to the commit of
+      #     its v1.0.0 tag and continue-on-error keeps it from breaking the run.
+      #     It is a Docker action, so expect an image pull/build on each run, and
+      #     its required `audience` input has to match the IAM trust policy.
+      #     The input only exists for workflow_dispatch, so every other event
+      #     (including fork pull requests) skips this step.
+      # -----------------------------------------------------------------------
+      - name: Show OIDC claims (github/actions-oidc-debugger) - optional
+        if: github.event.inputs.debug_claims == 'true'
+        continue-on-error: true
+        uses: github/actions-oidc-debugger@9649f894cd935032350792327ca5354e88e662e3 # v1.0.0
+        with:
+          audience: ${{ github.event.inputs.audience || 'sts.amazonaws.com' }}
+
       # -----------------------------------------------------------------------
       # 3. Job summary with a ready-to-paste trust policy.
       # -----------------------------------------------------------------------
@@ -182,6 +253,46 @@ jobs:
           repo_id="$(attr repository_id)"
           visibility="$(attr repository_visibility)"
           branch="${GITHUB_REF_NAME:-unknown}"
+
+          # --- Subject (sub) claim: the value an IAM trust policy must match ---
+          #   legacy    : repo:OWNER/REPO:ref:refs/heads/BRANCH
+          #   immutable : repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/BRANCH
+          # Repositories created on or after 2026-07-15 use the immutable format.
+          # Deriving the pattern from the real token keeps this correct either way.
+          CLAIMS="$RUNNER_TEMP/oidc-claims.json"
+          if [ -f "$CLAIMS" ] && [ "$(jq -r '.sub // empty' "$CLAIMS")" != "" ]; then
+            sub_claim="$(jq -r '.sub' "$CLAIMS")"
+            sub_source="OIDC token"
+          else
+            sub_claim="repo:${repo}:ref:refs/heads/${branch}"
+            sub_source="repository name (fallback - token not collected)"
+          fi
+
+          case "$sub_claim" in
+            repo:*)
+              repo_segment="${sub_claim#*:}"   # drop the leading "repo:"
+              repo_segment="${repo_segment%%:*}" # drop ":<context>[:<value>]"
+              sub_wildcard="repo:${repo_segment}:*"
+              sub_pinned="repo:${repo_segment}:ref:refs/heads/${branch}"
+              case "$repo_segment" in
+                *@*) sub_format="immutable (owner ID / repo ID included)"; sub_immutable="yes";;
+                *)   sub_format="legacy name-only"; sub_immutable="no";;
+              esac
+              ;;
+            *)
+              # Custom sub-claim template: there is no repo:... prefix to derive
+              # from, so the raw claim has to be matched exactly.
+              sub_wildcard="not applicable - match the raw sub exactly"
+              sub_pinned="$sub_claim"
+              sub_format="custom sub-claim template"
+              sub_immutable="no"
+              ;;
+          esac
+
+          if [ "$sub_source" != "OIDC token" ]; then
+            sub_format="assumed - token not collected, verify against the real token"
+            sub_immutable="unknown"
+          fi
 
           {
             echo "## Repository attributes for IAM role testing"
@@ -207,6 +318,22 @@ jobs:
             echo "> \`repository_id\` and \`repository_owner_id\` are immutable, so they are safer"
             echo "> trust-policy conditions than names. The \`sub\` claim is the primary condition."
             echo
+            echo "### Subject (\`sub\`) claim - what the trust policy must match"
+            echo
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            printf '| `sub` claim (from %s) | `%s` |\n' "$sub_source" "$sub_claim"
+            printf '| Format | %s |\n' "$sub_format"
+            printf '| `StringLike` pattern (any ref) | `%s` |\n' "$sub_wildcard"
+            printf '| `StringEquals` value (this ref only) | `%s` |\n' "$sub_pinned"
+            echo
+            if [ "$sub_immutable" = "yes" ]; then
+              echo "> **AccessDenied gotcha:** this repository uses the immutable subject format,"
+              echo "> so a condition written as \`repo:${repo}:*\` can never match the token and"
+              echo "> AWS answers \`Not authorized to perform sts:AssumeRoleWithWebIdentity\`."
+              echo "> Use the pattern in the table above, including the \`@\` IDs."
+              echo
+            fi
             echo "### Sample IAM role trust policy (generated from this run)"
             echo
             echo '```json'
@@ -227,13 +354,24 @@ jobs:
                     "token.actions.githubusercontent.com:repository_owner_id": "$org_id"
                   },
                   "StringLike": {
-                    "token.actions.githubusercontent.com:sub": "repo:$repo:*"
+                    "token.actions.githubusercontent.com:sub": "$sub_wildcard"
                   }
                 }
               }
             ]
           }
           JSON
+            echo '```'
+            echo
+            echo "Strictest variant - pin the exact subject claim of this run:"
+            echo
+            echo '```json'
+            echo '{'
+            echo '  "StringEquals": {'
+            echo '    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",'
+            printf '    "token.actions.githubusercontent.com:sub": "%s"\n' "$sub_pinned"
+            echo '  }'
+            echo '}'
             echo '```'
             echo
             if [ -f "$RUNNER_TEMP/oidc-claims.json" ]; then
@@ -337,3 +475,32 @@ jobs:
             echo "Success: \`secrets.IAM_ROLE\` was assumed through GitHub OIDC, so the"
             echo "trust policy already accepts this repository."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: If the assume call was denied, check these
+        if: failure()
+        run: |
+          cat <<'EOF'
+          The OIDC exchange failed. Work through this list in order - the
+          ``Repository attributes`` job summary has the exact values to compare against.
+
+          1. Subject format (most common). sts:AssumeRoleWithWebIdentity returns
+             AccessDenied - "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+             when the trust policy condition does not match the token.
+               * Immutable format (repos created on/after 2026-07-15, or opted in):
+                   repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/BRANCH
+               * Legacy format:
+                   repo:OWNER/REPO:ref:refs/heads/BRANCH
+             A condition of `repo:OWNER/REPO:*` cannot match the immutable format.
+             Copy the StringLike pattern from the job summary instead.
+          2. Audience. The trust policy `aud` must equal the value requested above
+             (default sts.amazonaws.com), and the OIDC provider's client ID list
+             must contain that audience.
+          3. Role ARN. secrets.IAM_ROLE must be the role in this account whose
+             trust policy you edited, and its Federated principal must be
+             arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com.
+          4. IAM propagation. Trust policy edits can take a few seconds to apply;
+             re-run the workflow once before deeper debugging.
+          5. CloudTrail. Look up AssumeRoleWithWebIdentity in the region used above
+             for the recorded errorCode and the resolved principalId, which shows
+             the exact `aud` and `sub` AWS matched against.
+          EOF
