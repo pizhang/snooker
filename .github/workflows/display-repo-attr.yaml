@@ -1,0 +1,339 @@
+# =============================================================================
+# Display repository attributes - for AWS IAM role (OIDC) testing
+# -----------------------------------------------------------------------------
+# What it does
+#   1. Prints the generic GitHub attributes of the repository and its owner
+#      (organization name, organization ID, repo name, repo ID, visibility,
+#      refs, actor and run metadata). These are the values you need in order to
+#      write an IAM role trust policy.
+#   2. Mints the Actions OIDC token and decodes its claims - exactly what AWS
+#      evaluates in the trust policy: sub, aud, repository_id,
+#      repository_owner_id, ref, environment, job_workflow_ref, ...
+#   3. Writes a job summary with a ready-to-paste trust policy populated from
+#      the real values of this run.
+#   4. Optionally (workflow_dispatch -> assume_role = true) assumes the role in
+#      the repository secret IAM_ROLE and then runs a generic STS check
+#      (sts:GetCallerIdentity, which needs no IAM permissions) to print the AWS
+#      account ID, caller ARN and caller user ID. That is the end-to-end proof
+#      that the trust policy is correct, and it tells you which account ID to
+#      use in the OIDC provider ARN.
+#
+# Secret
+#   IAM_ROLE - repository-level secret holding the IAM role ARN, for example:
+#   arn:aws:iam::123456789012:role/github-actions-oidc-test
+#   Actions masks the value automatically in the logs.
+#
+# Notes
+#   * id-token: write is required to request the OIDC token. It is granted per
+#     job (not workflow-wide) to keep the default permissions minimal.
+#   * Pull requests coming from forks cannot request an OIDC token and cannot
+#     read secrets, so those runs skip those steps instead of failing.
+#   * Nothing here writes to the repository; all steps are read-only.
+# =============================================================================
+
+name: Demo repo attributes
+
+on:
+  workflow_dispatch:
+    inputs:
+      assume_role:
+        description: With the attributes printed, assume secrets.IAM_ROLE and call sts:GetCallerIdentity
+        type: boolean
+        default: false
+      aws_region:
+        description: AWS region used for the credential test
+        type: string
+        default: us-east-1
+      audience:
+        description: OIDC token audience (must match the IAM trust policy aud)
+        type: string
+        default: sts.amazonaws.com
+
+  push:
+    branches: [main]
+
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Read-only reporting: repository/owner attributes + OIDC claims.
+  # ---------------------------------------------------------------------------
+  attributes:
+    name: Repository attributes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required to mint the OIDC token that AWS exchanges for credentials.
+      id-token: write
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Generic context attributes (org name/ID, repo name/ID, refs, run ...)
+      # -----------------------------------------------------------------------
+      - name: Show GitHub context attributes
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          set -euo pipefail
+          CTX="$RUNNER_TEMP/github-context.json"
+          printf '%s' "$GITHUB_CONTEXT" > "$CTX"
+
+          echo "### Identity of the owner (organization or user)"
+          keys=(repository_owner repository_owner_id)
+          for k in "${keys[@]}"; do
+            printf '  %-30s %s\n' "$k" "$(jq -r --arg k "$k" '.[$k] // "n/a"' "$CTX")"
+          done
+
+          echo
+          echo "### Identity of the repository"
+          keys=(repository repository_id repository_visibility)
+          for k in "${keys[@]}"; do
+            printf '  %-30s %s\n' "$k" "$(jq -r --arg k "$k" '.[$k] // "n/a"' "$CTX")"
+          done
+
+          echo
+          echo "### Credentials / principal attributes"
+          keys=(actor actor_id event_name ref ref_type ref_protected sha environment)
+          for k in "${keys[@]}"; do
+            printf '  %-30s %s\n' "$k" "$(jq -r --arg k "$k" '.[$k] // "n/a"' "$CTX")"
+          done
+
+          echo
+          echo "### Workflow / run attributes"
+          keys=(workflow workflow_ref job_workflow_ref job server_url run_id run_number run_attempt)
+          for k in "${keys[@]}"; do
+            printf '  %-30s %s\n' "$k" "$(jq -r --arg k "$k" '.[$k] // "n/a"' "$CTX")"
+          done
+
+          echo
+          echo "### Repository details from the event payload"
+          if jq -e '.event.repository' "$CTX" >/dev/null 2>&1; then
+            jq -r '.event.repository
+                   | { name, full_name, id, node_id, private, visibility,
+                       default_branch, owner: .owner.login, owner_id: .owner.id,
+                       owner_type: .owner.type, created_at }' "$CTX"
+          else
+            echo "  (event payload has no repository object for this event)"
+          fi
+
+          echo
+          echo "### Default GITHUB_* environment variables"
+          env | grep '^GITHUB_' | sort || true
+
+      # -----------------------------------------------------------------------
+      # 2. OIDC token claims - the payload AWS validates in a trust policy.
+      # -----------------------------------------------------------------------
+      - name: Show OIDC token claims
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          AUDIENCE: ${{ github.event.inputs.audience || 'sts.amazonaws.com' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::warning::ACTIONS_ID_TOKEN_REQUEST_URL is not set - cannot request an OIDC token."
+            exit 0
+          fi
+
+          echo "Requesting OIDC token with audience '$AUDIENCE' ..."
+          OIDC_TOKEN="$(curl -sS -f \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}" | jq -r '.value')"
+
+          # Decode the JWT payload (no signature verification needed - the token
+          # is ours and we only want to read the claims).
+          OIDC_TOKEN="$OIDC_TOKEN" python3 - <<'PY' > "$RUNNER_TEMP/oidc-claims.json"
+          import base64, json, os
+          payload = os.environ["OIDC_TOKEN"].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          print(json.dumps(claims, indent=2, sort_keys=True))
+          PY
+
+          echo
+          echo "### OIDC token claims"
+          cat "$RUNNER_TEMP/oidc-claims.json"
+
+          echo
+          echo "### Claim -> IAM trust policy condition key"
+          echo "  sub                  -> token.actions.githubusercontent.com:sub              (repo:OWNER/REPO:ref:...)"
+          echo "  aud                  -> token.actions.githubusercontent.com:aud"
+          echo "  repository_id        -> token.actions.githubusercontent.com:repository_id     (immutable)"
+          echo "  repository_owner_id  -> token.actions.githubusercontent.com:repository_owner_id (immutable)"
+          echo "  ref                  -> token.actions.githubusercontent.com:ref"
+          echo "  environment          -> token.actions.githubusercontent.com:environment"
+          echo "  job_workflow_ref     -> token.actions.githubusercontent.com:job_workflow_ref"
+
+      # -----------------------------------------------------------------------
+      # 3. Job summary with a ready-to-paste trust policy.
+      # -----------------------------------------------------------------------
+      - name: Write job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          CTX="$RUNNER_TEMP/github-context.json"
+          attr() { jq -r --arg k "$1" '.[$k] // "n/a"' "$CTX"; }
+
+          org="$(attr repository_owner)"
+          org_id="$(attr repository_owner_id)"
+          repo="$(attr repository)"
+          repo_id="$(attr repository_id)"
+          visibility="$(attr repository_visibility)"
+          branch="${GITHUB_REF_NAME:-unknown}"
+
+          {
+            echo "## Repository attributes for IAM role testing"
+            echo
+            echo "| Attribute | Context / OIDC claim | Value |"
+            echo "| --- | --- | --- |"
+            echo "| Organization (owner) name | \`repository_owner\` | \`$org\` |"
+            echo "| Organization (owner) ID | \`repository_owner_id\` | \`$org_id\` |"
+            echo "| Repository full name | \`repository\` | \`$repo\` |"
+            echo "| Repository ID | \`repository_id\` | \`$repo_id\` |"
+            echo "| Repository visibility | \`repository_visibility\` | \`$visibility\` |"
+            echo "| Ref | \`ref\` | \`${GITHUB_REF:-n/a}\` |"
+            echo "| Ref name | - | \`$branch\` |"
+            echo "| Ref type | \`ref_type\` | \`${GITHUB_REF_TYPE:-n/a}\` |"
+            echo "| Environment | \`environment\` | \`${GITHUB_ENVIRONMENT:-none}\` |"
+            echo "| Actor | \`actor\` | \`${GITHUB_ACTOR:-n/a}\` |"
+            echo "| Actor ID | \`actor_id\` | \`${GITHUB_ACTOR_ID:-n/a}\` |"
+            echo "| Event | \`event_name\` | \`${GITHUB_EVENT_NAME:-n/a}\` |"
+            echo "| Workflow | \`workflow\` | \`${GITHUB_WORKFLOW:-n/a}\` |"
+            echo "| Run ID / number | \`run_id\` / \`run_number\` | \`${GITHUB_RUN_ID:-n/a}\` / \`${GITHUB_RUN_NUMBER:-n/a}\` |"
+            echo "| IAM_ROLE secret | - | ${{ secrets.IAM_ROLE != '' && 'configured (value masked)' || 'not set' }} |"
+            echo
+            echo "> \`repository_id\` and \`repository_owner_id\` are immutable, so they are safer"
+            echo "> trust-policy conditions than names. The \`sub\` claim is the primary condition."
+            echo
+            echo "### Sample IAM role trust policy (generated from this run)"
+            echo
+            echo '```json'
+            cat <<JSON
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                    "token.actions.githubusercontent.com:repository_id": "$repo_id",
+                    "token.actions.githubusercontent.com:repository_owner_id": "$org_id"
+                  },
+                  "StringLike": {
+                    "token.actions.githubusercontent.com:sub": "repo:$repo:*"
+                  }
+                }
+              }
+            ]
+          }
+          JSON
+            echo '```'
+            echo
+            if [ -f "$RUNNER_TEMP/oidc-claims.json" ]; then
+              echo "### OIDC token claims (as presented to AWS)"
+              echo
+              echo "| Claim | Value |"
+              echo "| --- | --- |"
+              jq -r 'to_entries | sort_by(.key)[] | "| `\(.key)` | `\(.value)` |"' "$RUNNER_TEMP/oidc-claims.json"
+            else
+              echo "_OIDC claims were not collected for this event (fork pull request or missing id-token permission)._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # -----------------------------------------------------------------------
+      # 4. Confirm the repository secret is available to the workflow.
+      # -----------------------------------------------------------------------
+      - name: Check IAM_ROLE secret
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          IAM_ROLE: ${{ secrets.IAM_ROLE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${IAM_ROLE:-}" ]; then
+            echo "::error::Repository secret IAM_ROLE is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          echo "::add-mask::$IAM_ROLE"
+          echo "IAM_ROLE is configured (Actions masks the value in the log as ***)."
+          echo "  value (masked)        : $IAM_ROLE"
+          echo "  length                : ${#IAM_ROLE} characters"
+
+          case "$IAM_ROLE" in
+            arn:*:iam::*:role/*) echo "  format                : looks like an IAM role ARN";;
+            *) echo "::warning::IAM_ROLE does not look like an IAM role ARN (expected arn:<partition>:iam::<account-id>:role/<name>)";;
+          esac
+
+  # ---------------------------------------------------------------------------
+  # Optional end-to-end test: exchange the OIDC token for temporary credentials,
+  # then use them for a generic STS call to report the AWS account ID.
+  # Enable with workflow_dispatch -> assume_role = true.
+  # ---------------------------------------------------------------------------
+  assume-role:
+    name: Assume IAM role and STS identity test
+    needs: attributes
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.assume_role == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Configure AWS credentials from GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.IAM_ROLE }}
+          aws-region: ${{ github.event.inputs.aws_region }}
+          audience: ${{ github.event.inputs.audience }}
+          role-session-name: gh-oidc-test-${{ github.run_id }}
+          # Show the real account ID in the output - that is part of the test.
+          # Set to true if the account ID must be masked in the logs.
+          mask-aws-account-id: false
+
+      - name: Generic STS check - get account ID and caller identity
+        run: |
+          set -euo pipefail
+
+          echo "### aws sts get-caller-identity (raw output)"
+          aws sts get-caller-identity
+
+          # The same call, reduced to the fields an IAM test cares about.
+          # sts:GetCallerIdentity requires no IAM permissions, so it is a safe,
+          # generic way to prove the credentials work and to read the account ID.
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          user_id="$(aws sts get-caller-identity --query UserId --output text)"
+          region="${AWS_REGION:-${AWS_DEFAULT_REGION:-unknown}}"
+
+          echo
+          echo "  AWS account ID : $account_id"
+          echo "  Caller ARN     : $caller_arn"
+          echo "  Caller user ID : $user_id"
+          echo "  Region         : $region"
+
+          {
+            echo "## AWS identity reported by STS"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            printf '| AWS account ID | `%s` |\n' "$account_id"
+            printf '| Caller ARN | `%s` |\n' "$caller_arn"
+            printf '| Caller user ID | `%s` |\n' "$user_id"
+            printf '| Region | `%s` |\n' "$region"
+            echo
+            echo "OIDC provider ARN for this account - use it as the \`Principal.Federated\` value:"
+            echo
+            echo '```'
+            echo "arn:aws:iam::$account_id:oidc-provider/token.actions.githubusercontent.com"
+            echo '```'
+            echo
+            echo "Success: \`secrets.IAM_ROLE\` was assumed through GitHub OIDC, so the"
+            echo "trust policy already accepts this repository."
+          } >> "$GITHUB_STEP_SUMMARY"
