@@ -1,5 +1,9 @@
 # Snooker Score Board
 
+### v1.5.0
+
+- Improved potting history with sequential two-digit numbering, player names, ball colors and icons, and a visible scrollbar for longer histories.
+
 ### Languages
 
 The board ships in **English** and **简体中文 (Simplified Chinese)**. Use the **EN / 中文**

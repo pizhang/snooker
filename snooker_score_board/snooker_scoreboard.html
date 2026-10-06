@@ -162,7 +162,110 @@
             .red-counter .number { font-size: 1.2rem; }
         }
 
-        .players { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; }
+        .dashboard-shell {
+            display: flex;
+            align-items: stretch;
+            gap: 14px;
+            margin-top: 4px;
+        }
+        .players { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; flex: 1 1 auto; min-width: 0; }
+        .history-panel {
+            flex: 0 0 220px;
+            background: rgba(9, 20, 28, 0.9);
+            border: 1px solid #2a4a5a;
+            border-radius: 26px;
+            box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.2);
+            padding: 12px 10px 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .history-header {
+            font-size: 0.72rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #92b8c9;
+            text-align: center;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            flex: 1 1 0;
+            scrollbar-width: thin;
+            scrollbar-color: #6a8a96 rgba(16, 32, 40, 0.9);
+        }
+        .history-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        .history-list::-webkit-scrollbar-track {
+            background: rgba(16, 32, 40, 0.9);
+            border-radius: 4px;
+        }
+        .history-list::-webkit-scrollbar-thumb {
+            background: #6a8a96;
+            border: 2px solid rgba(16, 32, 40, 0.9);
+            border-radius: 4px;
+        }
+        .history-item {
+            background: rgba(16, 32, 40, 0.9);
+            border: 1px solid rgba(122, 146, 161, 0.35);
+            border-radius: 10px;
+            padding: 5px 8px;
+            display: grid;
+            grid-template-columns: 2.2em minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 8px;
+        }
+        .history-player {
+            font-size: 0.72rem;
+            color: #dceaf0;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            min-width: 0;
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .history-number {
+            color: #6a8a96;
+            font-size: 0.68rem;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .history-balls {
+            display: flex;
+            align-items: center;
+            justify-self: end;
+            gap: 4px;
+            font-size: 0.95rem;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .history-color-label {
+            color: #90aebd;
+            font-size: 0.68rem;
+        }
+        .history-empty {
+            font-size: 0.72rem;
+            letter-spacing: 0.8px;
+            color: #678899;
+            text-align: center;
+            padding: 18px 8px 10px;
+            border: 1px dashed rgba(122, 146, 161, 0.35);
+            border-radius: 16px;
+        }
+        @media (max-width: 860px) {
+            .dashboard-shell { flex-direction: column; }
+            .history-panel { flex-basis: auto; width: 100%; min-height: 128px; max-height: 220px; }
+            .history-list { flex: 1 1 auto; flex-direction: row; flex-wrap: wrap; }
+            .history-item { flex: 1 1 150px; }
+        }
 
         .turn-arrow {
             flex: 0 0 auto;
@@ -597,64 +700,71 @@
         <span class="frame-over-badge" id="frameOverBadge" data-i18n="frameOverBadge">🏁 FRAME OVER</span>
     </div>
 
-    <div class="players">
-        <div class="turn-arrow" id="arrowA">▶</div>
+    <div class="dashboard-shell">
+        <div class="players">
+            <div class="turn-arrow" id="arrowA">▶</div>
 
-        <div class="player-card" id="cardA">
-            <div class="player-header">
-                <div class="player-name" id="nameA" data-player="A">Player A <span class="edit-icon">✎</span></div>
-                <div class="frame-badge" id="framesA">
-                    <span class="trophy">🏆</span>
-                    <span class="number" id="frameCountA">0</span>
+            <div class="player-card" id="cardA">
+                <div class="player-header">
+                    <div class="player-name" id="nameA" data-player="A">Player A <span class="edit-icon">✎</span></div>
+                    <div class="frame-badge" id="framesA">
+                        <span class="trophy">🏆</span>
+                        <span class="number" id="frameCountA">0</span>
+                    </div>
+                </div>
+                <div class="player-score" id="scoreA">0</div>
+                <div class="btn-grid">
+                    <button class="btn btn-red" data-player="A" data-value="1">🔴 1</button>
+                    <button class="btn btn-red" data-player="A" data-value="1" data-reds="2" data-i18n-title="twoReds">🔴🔴 2</button>
+                    <button class="btn btn-yellow" data-player="A" data-value="2">🟡 2</button>
+                    <button class="btn btn-green" data-player="A" data-value="3">🟢 3</button>
+                    <button class="btn btn-brown" data-player="A" data-value="4">🟤 4</button>
+                    <button class="btn btn-blue" data-player="A" data-value="5">🔵 5</button>
+                    <button class="btn btn-pink" data-player="A" data-value="6"><span class="ball-dot pink"></span> 6</button>
+                    <button class="btn btn-black" data-player="A" data-value="7">⚫ 7</button>
                 </div>
             </div>
-            <div class="player-score" id="scoreA">0</div>
-            <div class="btn-grid">
-                <button class="btn btn-red" data-player="A" data-value="1">🔴 1</button>
-                <button class="btn btn-red" data-player="A" data-value="1" data-reds="2" data-i18n-title="twoReds">🔴🔴 2</button>
-                <button class="btn btn-yellow" data-player="A" data-value="2">🟡 2</button>
-                <button class="btn btn-green" data-player="A" data-value="3">🟢 3</button>
-                <button class="btn btn-brown" data-player="A" data-value="4">🟤 4</button>
-                <button class="btn btn-blue" data-player="A" data-value="5">🔵 5</button>
-                <button class="btn btn-pink" data-player="A" data-value="6"><span class="ball-dot pink"></span> 6</button>
-                <button class="btn btn-black" data-player="A" data-value="7">⚫ 7</button>
-            </div>
-        </div>
 
-        <div class="middle-controls" id="middleControls">
-            <div class="start-picker">
-                <span class="start-picker-label" data-i18n="startPlay">START PLAY</span>
-                <div class="start-picker-btns">
-                    <button class="btn" id="startABtn" data-player="A">A</button>
-                    <button class="btn" id="startBBtn" data-player="B">B</button>
+            <div class="middle-controls" id="middleControls">
+                <div class="start-picker">
+                    <span class="start-picker-label" data-i18n="startPlay">START PLAY</span>
+                    <div class="start-picker-btns">
+                        <button class="btn" id="startABtn" data-player="A">A</button>
+                        <button class="btn" id="startBBtn" data-player="B">B</button>
+                    </div>
+                </div>
+                <button class="btn btn-shot-taken" id="shotTakenBtn" data-i18n="shotTaken" disabled>🎯 Shot Taken</button>
+                <button class="btn btn-foul" id="foulBtn" data-i18n="foul">⚖️ Foul</button>
+            </div>
+
+            <div class="player-card" id="cardB">
+                <div class="player-header">
+                    <div class="player-name" id="nameB" data-player="B">Player B <span class="edit-icon">✎</span></div>
+                    <div class="frame-badge" id="framesB">
+                        <span class="trophy">🏆</span>
+                        <span class="number" id="frameCountB">0</span>
+                    </div>
+                </div>
+                <div class="player-score" id="scoreB">0</div>
+                <div class="btn-grid">
+                    <button class="btn btn-red" data-player="B" data-value="1">🔴 1</button>
+                    <button class="btn btn-red" data-player="B" data-value="1" data-reds="2" data-i18n-title="twoReds">🔴🔴 2</button>
+                    <button class="btn btn-yellow" data-player="B" data-value="2">🟡 2</button>
+                    <button class="btn btn-green" data-player="B" data-value="3">🟢 3</button>
+                    <button class="btn btn-brown" data-player="B" data-value="4">🟤 4</button>
+                    <button class="btn btn-blue" data-player="B" data-value="5">🔵 5</button>
+                    <button class="btn btn-pink" data-player="B" data-value="6"><span class="ball-dot pink"></span> 6</button>
+                    <button class="btn btn-black" data-player="B" data-value="7">⚫ 7</button>
                 </div>
             </div>
-            <button class="btn btn-shot-taken" id="shotTakenBtn" data-i18n="shotTaken" disabled>🎯 Shot Taken</button>
-            <button class="btn btn-foul" id="foulBtn" data-i18n="foul">⚖️ Foul</button>
+
+            <div class="turn-arrow" id="arrowB">◀</div>
         </div>
 
-        <div class="player-card" id="cardB">
-            <div class="player-header">
-                <div class="player-name" id="nameB" data-player="B">Player B <span class="edit-icon">✎</span></div>
-                <div class="frame-badge" id="framesB">
-                    <span class="trophy">🏆</span>
-                    <span class="number" id="frameCountB">0</span>
-                </div>
-            </div>
-            <div class="player-score" id="scoreB">0</div>
-            <div class="btn-grid">
-                <button class="btn btn-red" data-player="B" data-value="1">🔴 1</button>
-                <button class="btn btn-red" data-player="B" data-value="1" data-reds="2" data-i18n-title="twoReds">🔴🔴 2</button>
-                <button class="btn btn-yellow" data-player="B" data-value="2">🟡 2</button>
-                <button class="btn btn-green" data-player="B" data-value="3">🟢 3</button>
-                <button class="btn btn-brown" data-player="B" data-value="4">🟤 4</button>
-                <button class="btn btn-blue" data-player="B" data-value="5">🔵 5</button>
-                <button class="btn btn-pink" data-player="B" data-value="6"><span class="ball-dot pink"></span> 6</button>
-                <button class="btn btn-black" data-player="B" data-value="7">⚫ 7</button>
-            </div>
-        </div>
-
-        <div class="turn-arrow" id="arrowB">◀</div>
+        <aside class="history-panel" aria-live="polite">
+            <div class="history-header">Potting History</div>
+            <div class="history-list" id="historyList"></div>
+        </aside>
     </div>
 
     <div class="action-row" id="actionRow">
@@ -708,7 +818,7 @@
     (function() {
         'use strict';
 
-        const APP_VERSION = 'v1.4.0';
+        const APP_VERSION = 'v1.5.0';
         const MAX_REDS = 15;
         const COLOR_ORDER = ['yellow', 'green', 'brown', 'blue', 'pink', 'black'];
         const COLOR_VALUE_MAP = {
@@ -725,6 +835,16 @@
         function ballMark(colorKey) {
             if (colorKey === 'pink') return '<span class="ball-dot pink"></span>';
             return COLOR_EMOJI[colorKey] || '';
+        }
+
+        function ballGlyph(colorKey) {
+            if (colorKey === 'yellow') return '🟡';
+            if (colorKey === 'green') return '🟢';
+            if (colorKey === 'brown') return '🟤';
+            if (colorKey === 'blue') return '🔵';
+            if (colorKey === 'pink') return '🩷';
+            if (colorKey === 'black') return '⚫';
+            return '⚪';
         }
 
         // ============================================================
@@ -761,7 +881,7 @@
                 phaseOver: '🏁 Over',
                 phaseRespottedBlack: '⚫ Re-spotted black — draw lots!',
                 phaseShort: { reds: 'reds', 'last-red': 'last-red', colors: 'colors', 'respotted-black': 're-spotted black', over: 'over' },
-                colors: { yellow: 'Yellow', green: 'Green', brown: 'Brown', blue: 'Blue', pink: 'Pink', black: 'Black' },
+                colors: { red: 'Red', yellow: 'Yellow', green: 'Green', brown: 'Brown', blue: 'Blue', pink: 'Pink', black: 'Black' },
                 ballOn: (color) => `${color} on`,
                 redOn: '🔴 Red on',
                 anyColorOn: '🎯 Any color on',
@@ -813,7 +933,7 @@
                 phaseOver: '🏁 结束',
                 phaseRespottedBlack: '⚫ 重摆黑球 — 抽签定先手！',
                 phaseShort: { reds: '红球', 'last-red': '最后红球', colors: '彩球', 'respotted-black': '重摆黑球', over: '结束' },
-                colors: { yellow: '黄球', green: '绿球', brown: '咖啡球', blue: '蓝球', pink: '粉球', black: '黑球' },
+                colors: { red: '红球', yellow: '黄球', green: '绿球', brown: '咖啡球', blue: '蓝球', pink: '粉球', black: '黑球' },
                 ballOn: (color) => color,
                 redOn: '🔴 红球',
                 anyColorOn: '🎯 任意彩球',
@@ -928,6 +1048,7 @@
         const arrowB = document.getElementById('arrowB');
         const concedeBtn = document.getElementById('concedeBtn');
         const langChips = Array.from(document.querySelectorAll('.lang-chip'));
+        const historyList = document.getElementById('historyList');
 
         // Debug elements
         const debugPhase = document.getElementById('debugPhase');
@@ -1082,6 +1203,42 @@
         // RENDER
         // ============================================================
 
+        function renderHistory() {
+            if (!historyList) return;
+
+            const entries = state.history
+                .filter(entry => !entry.foul && entry.delta > 0)
+                .map((entry, index) => ({ entry, number: index + 1 }))
+                .reverse();
+
+            if (!entries.length) {
+                historyList.innerHTML = '<div class="history-empty">No pots yet</div>';
+                return;
+            }
+
+            historyList.innerHTML = entries.map(({ entry, number }) => {
+                const playerName = entry.player === 'A' ? state.nameA : state.nameB;
+                const playerLabel = Array.from(playerName).slice(0, 8).join('');
+                const isRed = !!entry.isRed;
+                const ballIcon = isRed ? '🔴' : ballGlyph(entry.ballColor || 'black');
+                const ballCount = isRed ? Math.max(1, entry.redCount || 1) : 1;
+                const colorName = colorLabel(isRed ? 'red' : (entry.ballColor || 'black'));
+                const ballLabel = isRed
+                    ? (ballCount > 1 ? `${ballCount} reds potted` : 'Red potted')
+                    : `${colorLabel(entry.ballColor || 'black')} potted`;
+
+                return `
+                    <div class="history-item">
+                        <span class="history-number">${String(number).padStart(2, '0')}</span>
+                        <span class="history-player">${playerLabel}</span>
+                        <span class="history-balls" aria-label="${ballLabel}">
+                            <span class="history-color-label">${colorName}</span>${ballIcon.repeat(ballCount)}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+
         function render() {
             // Scores
             scoreA.textContent = state.A;
@@ -1091,6 +1248,8 @@
             redCountEl.textContent = state.reds;
 
             redCounterEl.classList.toggle('all-potted', state.reds === 0);
+
+            renderHistory();
 
             // Color balls
             const balls = colorBallsEl.querySelectorAll('.color-ball');
@@ -1348,8 +1507,11 @@
             const historyEntry = {
                 player,
                 delta,
-                newTotal: state[player] + delta,
                 value: delta,
+                newTotal: state[player] + delta,
+                isRed,
+                redCount: count,
+                ballColor: isRed ? null : VALUE_TO_COLOR[parsed],
                 redsBefore: state.reds,
                 colorsPottedBefore: [...state.colorsPotted],
                 frameOverBefore: state.frameOver,
@@ -1570,6 +1732,9 @@
                 delta: pts,
                 newTotal: state[opponent] + pts,
                 foul: true,
+                isRed: false,
+                redCount: 0,
+                ballColor: null,
                 redAlsoPotted: !!redAlsoPotted,
                 redsBefore: state.reds,
                 colorsPottedBefore: [...state.colorsPotted],
