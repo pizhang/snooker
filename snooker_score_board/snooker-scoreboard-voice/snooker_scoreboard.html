@@ -585,19 +585,6 @@
             touch-action: manipulation;
         }
         .lang-chip.active { background: #2a6b8c; color: #f0f8ff; }
-        .voice-chip {
-            border: 1px solid #2a4a5a;
-            border-radius: 20px;
-            padding: 4px 10px;
-            background: #0d1c26;
-            color: #9fbcc8;
-            font: inherit;
-            cursor: pointer;
-            touch-action: manipulation;
-        }
-        .voice-chip[aria-pressed="true"] { border-color: #ffd966; color: #ffd966; }
-        .voice-chip.voice-error { border-color: #ff6b6b; color: #ff8888; }
-        .voice-chip:disabled { opacity: 0.65; cursor: wait; }
         .page-version {
             color: #6a8a96;
             text-align: center;
@@ -607,6 +594,82 @@
             font-weight: 700;
             opacity: 0.9;
         }
+
+        /* ---- Voice control (additive) ---- */
+        .voice-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #0d1c26;
+            border: 1px solid #2a4a5a;
+            color: #6a8a96;
+            font-family: inherit;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            touch-action: manipulation;
+            max-width: 340px;
+        }
+        .voice-chip .voice-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .voice-chip.voice-on { background: #16323f; color: #d8ecf5; border-color: #2a6b8c; }
+        .voice-chip.voice-listening {
+            background: #3a1a1a;
+            color: #ffb3b3;
+            border-color: #ff6b6b;
+            animation: pulse-red 1s ease-in-out infinite;
+        }
+        .voice-chip.voice-result { background: #143022; color: #9fe8bd; border-color: #2e7d4e; }
+        .voice-chip.voice-error { background: #3a2a10; color: #ffd966; border-color: #b8860b; }
+        .voice-help-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 10px 0;
+            max-height: 46vh;
+            overflow-y: auto;
+        }
+        .voice-help-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 0.85rem;
+            text-align: left;
+            border-bottom: 1px solid #1e3644;
+            padding-bottom: 4px;
+        }
+        .voice-help-row code { color: #ffd966; font-size: 0.82rem; }
+
+        /* ---- Voice engine settings (additive) ---- */
+        .voice-set {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 8px 0;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+        .voice-set label { color: #9fc6d6; }
+        .voice-set select, .voice-set input[type="text"] {
+            background: #0b1a22;
+            color: #d8ecf5;
+            border: 1px solid #2a4a5a;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-family: inherit;
+            font-size: 0.82rem;
+            max-width: 230px;
+        }
+        .voice-set-note { color: #6a8a96; font-size: 0.78rem; text-align: left; margin: 4px 0 10px; }
+        .voice-set-note.ok { color: #7ee2a8; }
+        .voice-set-note.bad { color: #ffb3b3; }
 
         .foul-overlay {
             position: fixed;
@@ -824,18 +887,17 @@
             <button class="lang-chip" data-lang="en">EN</button>
             <button class="lang-chip" data-lang="zh">中文</button>
         </span>
-        <button class="voice-chip" id="voiceToggle" type="button" aria-pressed="false">
-            🎙️ <span id="voiceStatus">Voice off</span>
+        <button class="voice-chip" id="voiceChip" type="button" data-i18n-title="voiceToggleTitle">
+            <span class="voice-text" id="voiceText" data-i18n="voiceOff">🎙️ Voice: off</span>
         </button>
     </div>
     <div class="page-version" id="appVersion"></div>
 </div>
-<script src="vosk-client.js"></script>
 <script>
     (function() {
         'use strict';
 
-        const APP_VERSION = 'v1.6.0';
+        const APP_VERSION = 'v1.6.1';
         const MAX_REDS = 15;
         const COLOR_ORDER = ['yellow', 'green', 'brown', 'blue', 'pink', 'black'];
         const COLOR_VALUE_MAP = {
@@ -886,17 +948,6 @@
                 resetMatch: '🏆 Reset Match',
                 resetMatchConfirm: 'Reset entire match? All frames, scores, and names will be reset.',
                 footer: 'tap name to edit · full screen F11 · auto-save',
-                voiceOff: 'Voice off',
-                voiceStarting: 'Starting offline voice…',
-                voiceListening: 'Listening · offline',
-                voiceUnavailable: 'Offline voice unavailable',
-                voicePermission: 'Allow microphone access to use voice',
-                voiceError: 'Offline voice connection failed',
-                voiceNotAllowed: 'That command is not allowed now',
-                voiceFoulOpened: 'Foul options opened',
-                voiceUnknown: (text) => `Not understood: “${text}”`,
-                voiceApplied: (action) => `Done: ${action}`,
-                voiceResetPrompt: 'Start a new frame? This will change the current frame.',
                 twoReds: 'Two reds potted in one stroke (2 points)',
                 version: (v) => `Version ${v}`,
                 defaultNameA: 'Player A',
@@ -931,7 +982,75 @@
                 dbgScoreB: 'Score B:',
                 none: 'none',
                 yes: 'true',
-                no: 'false'
+                no: 'false',
+                voice: '🎙️ Voice',
+                voiceOff: '🎙️ Voice: off',
+                voiceOn: '🎙️ Voice: on',
+                voiceToggleTitle: 'Voice commands — click to start or stop listening (V)',
+                voiceListening: '🎙️ Listening…',
+                voiceHeard: (text) => `🎙️ “${text}”`,
+                voicePicked: (text, top) => `🎙️ “${text}” (heard “${top}”)`,
+                voiceUnknown: (text) => `❓ “${text}”`,
+                voiceUnknownFull: (text) => `❓ Heard “${text}” — no command matched it`,
+                voiceIntentPot: 'score',
+                voiceIntentEndVisit: 'end of visit',
+                voiceIntentFoul: 'foul',
+                voiceIntentUndo: 'undo',
+                voiceIntentNewFrame: 'new frame',
+                voiceIntentResetMatch: 'reset match',
+                voiceIntentConcede: 'concede',
+                voiceIntentHelp: 'help',
+                voiceIntentWho: 'who is at the table',
+                voiceIntentLanguage: 'switch language',
+                voiceIntentCancel: 'cancelled',
+                voiceIntentConfirm: 'confirmed',
+                voiceIntentUnknown: 'not understood',
+                voiceNeedConfirm: 'Confirm?',
+                voiceUnsupported: '🚫 Voice needs Chrome or Edge',
+                voiceWhoIsAtTable: (name) => `🎙️ ${name} is at the table`,
+                voiceHelpTitle: '🎙️ Voice commands',
+                voiceHelpHint: 'Tap the 🎙️ Voice chip once — the board keeps listening until you tap it again or press V. Say one of these; say "yes" or "no" when asked to confirm.',
+                voiceHelpHint2: 'Right-click the chip (or press ?) any time to choose the engine and trigger.',
+                voiceHelpMic: 'The microphone stays live the whole time it is armed, so the browser keeps its recording indicator on. Click the chip again to stop.',
+                voiceHelpFile: 'This page is open from a file, so the browser treats it as a throwaway origin and asks for the microphone again on every reload. Run serve.py (or `python -m http.server`) and open the page from http://127.0.0.1 — one grant, then it is remembered.',
+                voiceFileHint: '🎙️ file:// — the mic prompt will repeat',
+                voiceHelpClose: '✖ Close',
+                voiceCmdRed: 'red / one red / two reds',
+                voiceCmdColor: 'yellow · green · brown · blue · pink · black',
+                voiceCmdPoints: '5 points / seven / two points',
+                voiceCmdEndVisit: 'end of visit · shot taken · miss · pass · next player',
+                voiceCmdFoul: 'foul / foul four / foul five and a red',
+                voiceCmdUndo: 'undo',
+                voiceCmdNewFrame: 'new frame (asks to confirm)',
+                voiceCmdConcede: 'player a concedes / i concede',
+                voiceCmdWho: 'whose turn is it',
+                voiceCmdLanguage: 'speak english / speak chinese (switch language)',
+                voiceCmdYesNo: 'yes / no (answers a confirmation)',
+                voiceHelpNoteLabel: 'Note',
+                voiceDenied: '🚫 Microphone blocked — allow it in the address bar',
+                voiceRestartLimit: '🎙️ Voice stopped — click to resume',
+                voiceTwoReds: 'two reds (2 points)',
+                voiceAppliedPot: (ball, name) => `✅ ${ball} to ${name}`,
+                voiceAppliedEndVisit: (name) => `✅ Visit over — ${name} to the table`,
+                voiceAppliedFoul: (pts, name) => `✅ Foul — ${pts} to ${name}`,
+                voiceAppliedUndo: '✅ Undone',
+                voiceAppliedNewFrame: '✅ New frame',
+                voiceAppliedResetMatch: '✅ Match reset',
+                voiceAppliedConcede: '✅ Frame conceded',
+                voiceAppliedLanguage: '✅ Language switched',
+                voiceNothingToUndo: '🚫 Nothing to undo',
+                voiceNeedConceder: '❓ Who concedes? Say a player name',
+                voiceFoulRange: '🚫 Say a foul between 4 and 7 points',
+                voiceFrameOver: '🚫 The frame is over',
+                voiceNotAllowed: '🚫 Not allowed — that ball is not on',
+                voiceCancelled: '✋ Cancelled',
+                voiceSayYesNo: 'Answer out loud with "yes" or "no", or tap a button.',
+                voiceAskNewFrame: 'Start a new frame?',
+                voiceAskResetMatch: 'Reset the whole match?',
+                voiceAskConcede: (name) => `${name} concedes the frame?`,
+                voiceError: '🚫 Voice input failed — try again',
+                voiceHelpBrowserOk: 'Speech recognition is available in this browser.',
+                voiceHelpBrowserMissing: 'This browser has no speech recognition. Use Chrome or Edge.'
             },
             zh: {
                 docTitle: '斯诺克记分牌',
@@ -949,17 +1068,6 @@
                 resetMatch: '🏆 重置比赛',
                 resetMatchConfirm: '确定重置整场比赛？所有局数、比分和姓名都将被重置。',
                 footer: '点击姓名可编辑 · F11 全屏 · 自动保存',
-                voiceOff: '语音关闭',
-                voiceStarting: '正在启动离线语音…',
-                voiceListening: '正在聆听 · 离线',
-                voiceUnavailable: '离线语音不可用',
-                voicePermission: '请允许麦克风访问以使用语音',
-                voiceError: '离线语音连接失败',
-                voiceNotAllowed: '当前规则不允许此操作',
-                voiceFoulOpened: '已打开犯规选项',
-                voiceUnknown: (text) => `未识别指令：“${text}”`,
-                voiceApplied: (action) => `已完成：${action}`,
-                voiceResetPrompt: '开始新的一局？当前局面将被更改。',
                 twoReds: '一杆打进两颗红球（2 分）',
                 version: (v) => `版本 ${v}`,
                 defaultNameA: '玩家 A',
@@ -994,7 +1102,75 @@
                 dbgScoreB: 'B 得分:',
                 none: '无',
                 yes: '是',
-                no: '否'
+                no: '否',
+                voice: '🎙️ 语音',
+                voiceOff: '🎙️ 语音：关',
+                voiceOn: '🎙️ 语音：开',
+                voiceToggleTitle: '语音指令 — 点击开始或停止收音（V）',
+                voiceListening: '🎙️ 收音中…',
+                voiceHeard: (text) => `🎙️ “${text}”`,
+                voicePicked: (text, top) => `🎙️ “${text}”（听到“${top}”）`,
+                voiceUnknown: (text) => `❓ “${text}”`,
+                voiceUnknownFull: (text) => `❓ 听到“${text}” — 但没能识别成指令`,
+                voiceIntentPot: '进球得分',
+                voiceIntentEndVisit: '本轮结束',
+                voiceIntentFoul: '犯规',
+                voiceIntentUndo: '撤销',
+                voiceIntentNewFrame: '新一局',
+                voiceIntentResetMatch: '重置比赛',
+                voiceIntentConcede: '认输',
+                voiceIntentHelp: '帮助',
+                voiceIntentWho: '查询击球方',
+                voiceIntentLanguage: '切换语言',
+                voiceIntentCancel: '已取消',
+                voiceIntentConfirm: '已确认',
+                voiceIntentUnknown: '未识别',
+                voiceNeedConfirm: '请确认？',
+                voiceUnsupported: '🚫 语音需要 Chrome 或 Edge',
+                voiceWhoIsAtTable: (name) => `🎙️ 现在是 ${name} 击球`,
+                voiceHelpTitle: '🎙️ 语音指令',
+                voiceHelpHint: '点击一次 🎙️ 语音按钮 — 记分牌会持续收音，直到再点一次或按 V。说出下列指令；需要确认时说“确认”或“取消”。',
+                voiceHelpHint2: '随时右键点击按钮（或按 ?）可切换引擎与触发方式。',
+                voiceHelpMic: '收音期间麦克风保持开启，因此浏览器会持续显示录音提示。再次点击按钮即可停止。',
+                voiceHelpFile: '当前是以文件方式打开页面，浏览器每次都会重新询问麦克风权限。请运行 serve.py（或 `python -m http.server`），改用 http://127.0.0.1 打开 — 只需授权一次并会记住。',
+                voiceFileHint: '🎙️ file:// — 每次都会重复询问麦克风',
+                voiceHelpClose: '✖ 关闭',
+                voiceCmdRed: '红球 / 一颗红球 / 两颗红球',
+                voiceCmdColor: '黄球 · 绿球 · 咖啡球 · 蓝球 · 粉球 · 黑球',
+                voiceCmdPoints: '五分 / 七分',
+                voiceCmdEndVisit: '本轮结束 · 换人 · 没进',
+                voiceCmdFoul: '犯规 / 犯规四分 / 犯规五分带红球',
+                voiceCmdUndo: '撤销',
+                voiceCmdNewFrame: '新一局（会请求确认）',
+                voiceCmdConcede: '玩家A认输 / 我认输',
+                voiceCmdWho: '该谁了',
+                voiceCmdLanguage: '说中文 / 说英文（切换语言）',
+                voiceCmdYesNo: '确认 / 取消（回答确认）',
+                voiceHelpNoteLabel: '说明',
+                voiceDenied: '🚫 麦克风被拒绝 — 请在地址栏允许',
+                voiceRestartLimit: '🎙️ 语音已停止 — 点击继续',
+                voiceTwoReds: '两颗红球（2 分）',
+                voiceAppliedPot: (ball, name) => `✅ ${ball} 记给 ${name}`,
+                voiceAppliedEndVisit: (name) => `✅ 本轮结束 — 换 ${name} 击球`,
+                voiceAppliedFoul: (pts, name) => `✅ 犯规 — ${pts} 分给 ${name}`,
+                voiceAppliedUndo: '✅ 已撤销',
+                voiceAppliedNewFrame: '✅ 新一局',
+                voiceAppliedResetMatch: '✅ 比赛已重置',
+                voiceAppliedConcede: '✅ 本局已认输',
+                voiceAppliedLanguage: '✅ 已切换语言',
+                voiceNothingToUndo: '🚫 没有可撤销的操作',
+                voiceNeedConceder: '❓ 谁认输？请说出玩家名',
+                voiceFoulRange: '🚫 犯规分请说 4 到 7 分',
+                voiceFrameOver: '🚫 本局已结束',
+                voiceNotAllowed: '🚫 此球现在不能击打',
+                voiceCancelled: '✋ 已取消',
+                voiceSayYesNo: '请口头说“确认”或“取消”，也可以直接点按钮。',
+                voiceAskNewFrame: '开始新一局？',
+                voiceAskResetMatch: '重置整场比赛？',
+                voiceAskConcede: (name) => `${name} 认输？`,
+                voiceError: '🚫 语音识别失败 — 请重试',
+                voiceHelpBrowserOk: '此浏览器支持语音识别。',
+                voiceHelpBrowserMissing: '此浏览器不支持语音识别，请使用 Chrome 或 Edge。'
             }
         };
 
@@ -1087,9 +1263,12 @@
         const arrowB = document.getElementById('arrowB');
         const concedeBtn = document.getElementById('concedeBtn');
         const langChips = Array.from(document.querySelectorAll('.lang-chip'));
-        const voiceToggle = document.getElementById('voiceToggle');
-        const voiceStatusEl = document.getElementById('voiceStatus');
         const historyList = document.getElementById('historyList');
+        // Voice control (optional: a page saved without the chip still runs)
+        const voiceChip = document.getElementById('voiceChip');
+        const voiceTextEl = document.getElementById('voiceText');
+        const voiceSupported = !!((typeof window !== 'undefined') &&
+            (window.SpeechRecognition || window.webkitSpeechRecognition));
 
         // Debug elements
         const debugPhase = document.getElementById('debugPhase');
@@ -1361,6 +1540,9 @@
             debugScoreB.textContent = state.B;
 
             appVersionEl.textContent = t('version', APP_VERSION);
+
+            // Voice chip follows the current language
+            if (voiceChip) updateVoiceChip();
 
             // Save state
             try {
@@ -1872,7 +2054,7 @@
 
         function resetMatch() {
             if (state.framesA > 0 || state.framesB > 0 || state.history.length > 0) {
-                if (!confirm(t('resetMatchConfirm'))) return false;
+                if (!confirm(t('resetMatchConfirm'))) return;
             }
             state.framesA = 0;
             state.framesB = 0;
@@ -1881,7 +2063,6 @@
             state.breaker = 'A';
             resetState('A');
             render();
-            return true;
         }
 
         // ============================================================
@@ -1974,6 +2155,1090 @@
             input.addEventListener('click', (e) => e.stopPropagation());
         }
 
+        // ===== VOICE COMMANDS (additive) =====
+        // Voice is NOT a second scoring path.
+        //
+        // A transcript is parsed into exactly one intent and dispatched through the same
+        // guarded functions the buttons call (addPoints / takeShot / handOverTo / applyFoul /
+        // undo / newFrame / resetMatch / concedeFrame). So the turn check in addPoints and
+        // every rules guard still apply — a stray utterance can never score for the wrong
+        // player and can never put the state machine into an illegal phase.
+        //
+        // Anything unrecognised returns null and is ignored, and anything destructive (new
+        // frame, reset match, concede, foul) asks before it is applied. Every applied command
+        // is still one Undo away.
+        const VOICE_SR_LOCALE = { en: 'en-GB', zh: 'zh-CN' };
+
+        // Confirmation state. Declared before parseVoiceCommand so the parser has no reliance on
+        // declaration order and can be extracted and tested on its own.
+        let voicePending = null;        // intent waiting for a spoken yes/no
+        let voiceConfirmInFlight = null; // callback waiting for a tap or a spoken yes
+        let voiceAwaitAnswer = false;   // a spoken yes/no is expected, so re-open the microphone
+
+        const VOICE_NUM_WORDS = {
+            zero: 0, oh: 0, nought: 0, one: 1, won: 1, two: 2, to: 2, too: 2, three: 3, four: 4,
+            for: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10
+        };
+        const VOICE_ZH_NUM = {
+            '零': 0, '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7
+        };
+
+        const VOICE_VOCAB = {
+            en: {
+                yes: ['yes', 'yeah', 'yep', 'yup', 'confirm', 'confirmed', 'correct', 'apply', 'do it', 'ok', 'okay'],
+                no: ['no', 'nope', 'nah', 'cancel', 'stop', 'negative', 'deny', 'do not', "don't", 'dont'],                ball: {
+                    1: ['red', 'reds', 'red ball', 'a red', 'one red'],
+                    2: ['yellow', 'yellow ball'],
+                    3: ['green', 'green ball'],
+                    4: ['brown', 'brown ball'],
+                    5: ['blue', 'blue ball'],
+                    6: ['pink', 'pink ball'],
+                    7: ['black', 'black ball', 'the black']
+                },
+                redSingular: ['red', 'red ball'],
+                redAlternative: [['one red', 1], ['a red', 1], ['two reds', 2], ['2 reds', 2], ['both reds', 2]],
+                foul: ['foul', 'foul shot', 'foul stroke', 'push shot', 'penalty', 'penalty points'],
+                foulPhrases: [/\bfoul\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/, /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:points?\s+)?(?:away|penalty)\b/],
+                andRed: ['and a red', 'and the red', 'and red', 'red also', 'red too', 'plus a red', 'red potted'],
+                action: {
+                    undo: ['undo', 'undo that', 'undo last', 'go back', 'take back', 'revert', 'scratch that', 'undo it'],
+                    endVisit: ['end of visit', 'end visit', 'visit over', 'shot taken', 'end of break', 'end break',
+                        'end of turn', 'end turn', 'turn over', 'next player', 'switch player', 'other player',
+                        'hand over', 'handover', 'table over', 'pass', 'miss', 'missed', 'no pot', 'enough',
+                        'stop', 'next', 'done'],
+                    foul: ['foul'],
+                    newFrame: ['new frame', 'next frame', 'start new frame', 'new game', 'next game', 'new rack', 'begin a new frame'],
+                    resetMatch: ['reset match', 'reset the match', 'reset game', 'reset score', 'reset scores', 'clear scores', 'start over', 'new match'],
+                    concede: ['concede', 'concedes', 'conceded', 'concession', 'i resign', 'resign', 'give up', 'gives up', 'forfeit', 'forfeits', 'i lose'],
+                    who: ['whose turn', 'whose turn is it', "who's turn", 'who is at the table', 'who is playing', 'who is on', 'who is in', 'who plays next', 'current player', 'who is at the table now'],
+                    help: ['help', 'what can i say', 'what can i do', 'list commands', 'show commands', 'voice commands'],
+                    language: ['speak english', 'switch to english', 'english please', 'in english',
+                        'speak chinese', 'switch to chinese', 'chinese please', 'in chinese'],
+                    yes: ['yes', 'yeah', 'yep', 'confirm', 'confirmed', 'correct', 'ok', 'okay', 'do it', 'apply'],
+                    no: ['no', 'nope', 'cancel', 'stop', 'deny', 'do not', "don't", 'dont']
+                },
+                playerOther: ['player b', 'player two', 'player 2', 'b', 'second player'],
+                playerSelf: ['player a', 'player one', 'player 1', 'a', 'first player'],
+                playerKeyword: ['player', 'players'],
+                negations: ["don't", 'dont', 'do not', 'not', 'no', 'never'],
+                // A comma is a clause break: "not blue, yellow" means "not blue, (and) yellow"
+                clauseBreaks: [', ', ' and then ', ' but ', ' then '],
+                fillers: ['please', 'the', 'a', 'an', 'ball', 'pot', 'potting', 'potted', 'pocket', 'pocketed', 'score',
+                    'scored', 'scores', 'points', 'point', 'for', 'to', 'my', 'me', 'in', 'into', 'down', 'goes',
+                    'went', 'it', 'is', 'was', 'and', 'that', 'again', 'just', 'now', 'yeah', 'ok', 'okay', 'so',
+                    'um', 'uh', 'er', 'uhh', 'like', 'well']
+            },
+            zh: {
+                yes: ['确认', '确定', '是', '好', '好的', '对', '可以', '应用'],
+                no: ['取消', '不', '不要', '不对', '否', '算了'],
+                ball: {
+                    1: ['红球', '红', '一颗红球'],
+                    2: ['黄球', '黄'],
+                    3: ['绿球', '绿'],
+                    4: ['咖啡球', '咖啡', '棕球'],
+                    5: ['蓝球', '蓝'],
+                    6: ['粉球', '粉'],
+                    7: ['黑球', '黑']
+                },
+                redSingular: ['红球', '红'],
+                redAlternative: [['一颗红球', 1], ['一个红球', 1], ['两颗红球', 2], ['两个红球', 2], ['两红', 2]],
+                foul: ['犯规', '罚分'],
+                foulPhrases: [/(\d+)\s*分/, /([一二两三四五六七八九十])\s*分/],
+                andRed: ['带红球', '红球也算', '打了红球', '有红球'],
+                action: {
+                    undo: ['撤销', '撤回', '取消上一步', '返回上一步', '退一步'],
+                    endVisit: ['本轮结束', '换人', '结束本轮', '这一轮结束', '打完了', '交球', '轮到对方', '下一杆'],
+                    foul: ['犯规', '罚分'],
+                    newFrame: ['新一局', '下一局', '开始新一局', '新局'],
+                    resetMatch: ['重置比赛', '重置整场', '重新开始', '清除比分'],
+                    concede: ['认输', '投降', '放弃', '我认输'],
+                    who: ['该谁了', '现在谁打', '轮到谁', '谁击球', '谁在打'],
+                    help: ['帮助', '指令', '语音指令', '能说什么'],
+                    language: ['说中文', '切换中文', '中文', '说英文', '切换英文', '英文'],
+                    yes: ['确认', '确定', '是', '好', '好的', '对'],
+                    no: ['取消', '不', '不要', '不对', '否']
+                },
+                playerOther: ['玩家b', '玩家二', '玩家乙', 'b方', '乙方', '对方', '对手'],
+                playerSelf: ['玩家 a', '玩家a', '玩家一', '玩家甲', 'a方', '甲方', '我'],
+                playerKeyword: ['玩家'],
+                negations: ['不要', '别', '没有', '没', '不'],
+                clauseBreaks: ['，', '。', '但', '然后', '而且'],
+                fillers: ['请', '帮我', '一下', '这颗', '那颗', '这杆', '打进', '进了', '得分', '分', '的', '了', '吧', '啊', '嗯', '呢']
+            }
+        };
+
+        const VOICE_HELP_KEYS = [
+            ['voiceCmdRed', 'voiceCmdRed'],
+            ['voiceCmdColor', 'voiceCmdColor'],
+            ['voiceCmdPoints', 'voiceCmdPoints'],
+            ['voiceCmdEndVisit', 'voiceCmdEndVisit'],
+            ['voiceCmdFoul', 'voiceCmdFoul'],
+            ['voiceCmdUndo', 'voiceCmdUndo'],
+            ['voiceCmdNewFrame', 'voiceCmdNewFrame'],
+            ['voiceCmdConcede', 'voiceCmdConcede'],
+            ['voiceCmdWho', 'voiceCmdWho'],
+            ['voiceCmdLanguage', 'voiceCmdLanguage'],
+            ['voiceCmdYesNo', 'voiceCmdYesNo']
+        ];
+
+        function voiceEscape(text) {
+            return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Escaped alternation, sorted longest-first so "green ball" wins over "green"
+        function voiceHasPhrase(haystack, phrases) {
+            return phrases.some(phrase => haystack.indexOf(phrase) !== -1);
+        }
+
+        // The first number anywhere in a phrase, digits or words: "5 points" → 5,
+        // "foul four and a red" → 4. Returns null when the phrase carries no number.
+        function voiceAnyNumber(text) {
+            const digit = text.match(/\d+/);
+            if (digit) return parseInt(digit[0], 10);
+            const tokens = text.split(/\s+/);
+            for (let i = 0; i < tokens.length; i += 1) {
+                const word = tokens[i];
+                if (Object.prototype.hasOwnProperty.call(VOICE_NUM_WORDS, word)) return VOICE_NUM_WORDS[word];
+            }
+            return null;
+        }
+
+        function voiceZhNumber(text) {
+            const digit = text.match(/\d+/);
+            if (digit) return parseInt(digit[0], 10);
+            const keys = Object.keys(VOICE_ZH_NUM);
+            for (let i = 0; i < keys.length; i += 1) {
+                if (text.indexOf(keys[i]) !== -1) return VOICE_ZH_NUM[keys[i]];
+            }
+            return null;
+        }
+
+        // A negated ball must never score ("not blue, yellow" pots only yellow). Exactly one
+        // negated clause is removed: from the negation up to the first clause break after it, or
+        // to the end of the utterance when there is no break. The break itself is kept, so a later
+        // clause survives. Everything is matched against a space-padded copy, because the breaks
+        // are written with their spaces (", ", " then ", " but ") and the raw text has only one.
+        function voiceDropNegated(text, negations, clauseBreaks) {
+            const alternatives = negations
+                .slice()
+                .sort((a, b) => b.length - a.length)
+                .map(voiceEscape)
+                .join('|');
+            if (!alternatives) return text;
+
+            const ascii = /^[\x20-\x7E]*$/.test(negations.join(' '));
+            const boundary = ascii ? '\\b' : '';
+            const match = new RegExp(`(?:${boundary}(?:${alternatives})${boundary})`, 'i').exec(text);
+            if (!match) return text;
+
+            const breaks = (clauseBreaks || [])
+                .slice()
+                .sort((a, b) => a.length - b.length); // earliest-ending break wins on a tie
+            const from = match.index + match[0].length;
+            const haystack = ` ${text} `;
+            let end = text.length;
+            breaks.forEach(word => {
+                const at = haystack.indexOf(word, from);
+                if (at === -1) return;
+                // Map the position in the padded string back onto the original text
+                const original = Math.max(0, Math.min(text.length, at - 1));
+                if (original >= from && original < end) end = original;
+            });
+
+            const kept = end >= text.length ? '' : text.slice(end);
+            return (text.slice(0, match.index) + ' ' + kept).replace(/\s+/g, ' ').trim();
+        }
+
+        function voiceNormalize(text) {
+            return String(text == null ? '' : text)
+                .toLowerCase()
+                // Commas survive: voiceDropNegated treats ", " as a clause break, so
+                // "not blue, yellow" keeps the yellow. Other punctuation becomes a space.
+                .replace(/[!?;.]/g, ' ')
+                .replace(/[-_/\\]+/g, ' ')
+                .replace(/,+/g, ', ')
+                .replace(/\s+/g, ' ')
+                .replace(/\s*,\s*/g, ', ')
+                .trim();
+        }
+
+        // A transcript becomes at most ONE intent. Everything unknown returns null and is
+        // ignored, so background speech can never score.
+        function parseVoiceCommand(transcript, langOverride) {
+            const raw = String(transcript == null ? '' : transcript);
+            // A Chinese transcript is parsed with the Chinese vocabulary even when the page is in
+            // English: the script is a stronger signal than the UI language setting.
+            const zhPack = langOverride === 'zh' || /[\u4e00-\u9fff]/.test(raw);
+            const pack = VOICE_VOCAB[zhPack ? 'zh' : 'en'];
+            let text = voiceNormalize(raw);
+            if (!text) return null;
+
+            if (zhPack) text = text.replace(/[\s,，。！？、；：]/g, '');
+            const zhNumber = zhPack ? voiceZhNumber(text) : null;
+            const actions = pack.action;
+
+            // A pending confirmation owns the next utterance, and it is answered before any
+            // negation stripping — otherwise a bare "no" would be stripped and lost. "yes" and
+            // "no" must be the whole utterance here, so "no red" is still a command, not an answer.
+            if (voicePending) {
+                if (pack.yes.indexOf(text) !== -1 || actions.yes.indexOf(text) !== -1) {
+                    const pending = voicePending;
+                    voicePending = null;
+                    return { kind: 'confirm', intent: pending };
+                }
+                if (pack.no.indexOf(text) !== -1 || actions.no.indexOf(text) !== -1) {
+                    voicePending = null;
+                    return { kind: 'cancel' };
+                }
+                voicePending = null;
+            }
+
+            // A negated word never scores: "not blue, yellow" leaves only yellow
+            text = voiceDropNegated(text, pack.negations, pack.clauseBreaks);
+            if (!text.trim()) return null;
+            const padded = zhPack ? text : ` ${text} `;
+            const has = phrases => voiceHasPhrase(padded, phrases);
+
+            // 0. Help and status questions
+            if (has(actions.help)) return { kind: 'help' };
+            if (has(actions.who)) return { kind: 'whoIsAtTable' };
+
+            // 1. Fouls — matched before any ball name, so "foul on the blue" can never score 5.
+            //    A foul is always spoken ("foul", "foul five", "five away"). The numbered
+            //    patterns are only consulted once the foul word has been seen: the Chinese
+            //    pattern matches a bare "一分", which otherwise matched the 一 inside 新一局.
+            const foulWord = has(actions.foul) || has(pack.foul);
+            const foulPhraseRaw = foulWord
+                ? (pack.foulPhrases.map(re => raw.toLowerCase().match(re)).find(Boolean) || null)
+                : null;
+            const penaltyShape = /^\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:points?\s+)?away\b/.test(text);
+            if (foulWord || penaltyShape) {
+                const spokenFoul = (foulPhraseRaw && voiceAnyNumber(foulPhraseRaw[1])) ||
+                    (penaltyShape && voiceAnyNumber(text)) || null;
+                const pts = spokenFoul || zhNumber || 4;
+                if (pts < 4 || pts > 7) {
+                    return { kind: 'error', messageKey: 'voiceFoulRange' };
+                }
+                return { kind: 'foul', pts, redAlsoPotted: has(pack.andRed) };
+            }
+
+            // 2. Potting a red is ambiguous, so it is checked before any other colour
+            const redMulti = pack.redAlternative.find(pair => has([pair[0]]));
+            if (redMulti) return { kind: 'pot', value: 1, reds: redMulti[1] };
+            if (zhPack && /两[颗个]?红/.test(text)) return { kind: 'pot', value: 1, reds: 2 };
+            if (has(pack.redSingular)) return { kind: 'pot', value: 1, reds: 1 };
+
+            const colored = [2, 3, 4, 5, 6, 7].find(value => has(pack.ball[value]));
+            if (colored) return { kind: 'pot', value: colored, reds: 1 };
+
+            // 3. Visit, history and match intents — checked before a bare number, because the
+            //    Chinese numeral 一 inside 新一局 would otherwise be read as "1 point"
+            if (has(actions.endVisit)) return { kind: 'endVisit' };
+            if (has(actions.undo)) return { kind: 'undo' };
+            if (has(actions.newFrame)) return { kind: 'newFrame', needsConfirm: true };
+            if (has(actions.resetMatch)) return { kind: 'resetMatch', needsConfirm: true };
+            if (has(actions.concede)) return { kind: 'concede', who: voiceFindPlayer(text, zhPack) };
+            if (has(actions.language)) {
+                if (has(['english', '英文'])) return { kind: 'setLanguage', lang: 'en' };
+                return { kind: 'setLanguage', lang: 'zh' };
+            }
+
+            // 4. A bare number is the ball value: "5 points" is the blue
+            const spokenNumber = zhNumber != null ? zhNumber : voiceAnyNumber(text);
+            if (spokenNumber != null) {
+                if (spokenNumber >= 2 && spokenNumber <= 7) return { kind: 'pot', value: spokenNumber, reds: 1 };
+                if (spokenNumber === 1) return { kind: 'pot', value: 1, reds: 1 };
+                return null;
+            }
+
+            // Unknown speech is ignored: it is never guessed into a scoring action
+            return null;
+        }
+
+        // Which player an utterance names, if any: 'A', 'B' or null. It takes the transcript it
+        // is asked about (never a global), so the parser stays a pure function. Alternatives are
+        // matched as whole phrases inside the utterance (not token-by-token), so multi-word
+        // names like "player a", "玩家a" and "alice" all work, and a name is never matched as a
+        // fragment of another word.
+        function voiceFindPlayer(text, zhPack) {
+            const pack = zhPack ? VOICE_VOCAB.zh : VOICE_VOCAB.en;
+            const normalized = voiceNormalize(text);
+            const tokens = normalized.split(zhPack ? /[\s,，。；：]+/ : /\s+/).filter(Boolean);
+            const haystack = ` ${normalized} `;
+            // A name is matched on the token form first, then as a spaced phrase. Only in Chinese
+            // (where the transcript is compacted and a name has no surrounding spaces) is a plain
+            // substring accepted, so a Latin name can never match inside another word.
+            const says = phrases => phrases.some(phrase => {
+                const clean = voiceNormalize(phrase);
+                if (!clean) return false;
+                if (tokens.indexOf(clean) !== -1) return true;
+                if (haystack.indexOf(` ${clean} `) !== -1) return true;
+                return zhPack && normalized.indexOf(clean) !== -1;
+            });
+
+            const nameA = voiceNormalize(state.nameA);
+            const nameB = voiceNormalize(state.nameB);
+            const spokenA = !!nameA && says([nameA]);
+            const spokenB = !!nameB && says([nameB]);
+
+            if (spokenA && !spokenB) return 'A';
+            if (spokenB && !spokenA) return 'B';
+            if (spokenA && spokenB) return null; // genuinely ambiguous — never guess
+
+            const labelA = says(pack.playerSelf);
+            const labelB = says(pack.playerOther);
+
+            if (labelA && !labelB) return 'A';
+            if (labelB && !labelA) return 'B';
+            return null;
+        }
+
+        // ---- dispatch: every branch below calls the existing guarded action ----
+        function voicePotLabel(value, reds) {
+            if (value === 1) return reds === 2 ? t('voiceTwoReds') : t('colors').red;
+            return colorLabel(VALUE_TO_COLOR[value]);
+        }
+
+        function voiceNameOf(player) {
+            return player === 'A' ? state.nameA : player === 'B' ? state.nameB : '';
+        }
+
+        function executeVoiceCommand(intent) {
+            if (!intent) return false;
+            const atTable = () => voiceNameOf(state.turn);
+
+            switch (intent.kind) {
+                case 'pot': {
+                    if (state.frameOver || state.phase === 'over') return voiceSayError('voiceFrameOver');
+                    // The same question addPoints() asks, so a refusal is reported instead of
+                    // claiming a pot that never happened
+                    const allowed = intent.value === 1
+                        ? canPotReds(intent.reds)
+                        : canPotColor(intent.value);
+                    if (!allowed) return voiceSayError('voiceNotAllowed');
+                    const before = state[state.turn];
+                    addPoints(state.turn, intent.value, intent.reds);
+                    if (state[state.turn] === before) return voiceSayError('voiceNotAllowed');
+                    return voiceSay(t('voiceAppliedPot', voicePotLabel(intent.value, intent.reds), atTable()));
+                }
+
+                case 'endVisit':
+                    if (!canTakeShot()) return voiceSayError('voiceFrameOver');
+                    takeShot();
+                    return voiceSay(t('voiceAppliedEndVisit', atTable()));
+
+                case 'foul':
+                    if (state.frameOver) return voiceSayError('voiceFrameOver');
+                    applyFoul(intent.pts, intent.redAlsoPotted);
+                    return voiceSay(t('voiceAppliedFoul', intent.pts, atTable()));
+
+                case 'undo':
+                    if (state.history.length === 0) return voiceSayError('voiceNothingToUndo');
+                    undo();
+                    return voiceSay(t('voiceAppliedUndo'));
+
+                // Destructive intents are parked in `voicePending` so the next utterance can
+                // answer "yes" / "no" out loud. A parked intent carries `confirmed`, which is how
+                // the approved re-dispatch below knows to act instead of asking again.
+                case 'newFrame':
+                    if (!intent.confirmed
+                        && !voiceAsk('voiceAskNewFrame', null, { kind: 'newFrame', confirmed: true })) {
+                        return false;
+                    }
+                    voicePending = null;
+                    newFrame();
+                    return voiceSay(t('voiceAppliedNewFrame'));
+
+                case 'resetMatch':
+                    if (!intent.confirmed
+                        && !voiceAsk('voiceAskResetMatch', null, { kind: 'resetMatch', confirmed: true })) {
+                        return false;
+                    }
+                    voicePending = null;
+                    resetMatch();
+                    return voiceSay(t('voiceAppliedResetMatch'));
+
+                case 'concede':
+                    if (state.frameOver) return voiceSayError('voiceFrameOver');
+                    if (!intent.who) return voiceSayError('voiceNeedConceder');
+                    if (!intent.confirmed
+                        && !voiceAsk('voiceAskConcede', voiceNameOf(intent.who),
+                            { kind: 'concede', who: intent.who, confirmed: true })) {
+                        return false;
+                    }
+                    voicePending = null;
+                    concedeFrame(intent.who);
+                    return voiceSay(t('voiceAppliedConcede'));
+
+                case 'setLanguage':
+                    setLanguage(intent.lang);
+                    return voiceSay(t('voiceAppliedLanguage'));
+
+                case 'whoIsAtTable':
+                    return voiceSay(t('voiceWhoIsAtTable', atTable()));
+
+                case 'help':
+                    showVoiceHelp();
+                    return voiceSay(t('voiceHelpTitle'));
+
+                case 'cancel':
+                    return voiceSay(t('voiceCancelled'));
+
+                case 'confirm':
+                    return executeVoiceCommand(intent.intent);
+
+                case 'error':
+                    return voiceSayError(intent.messageKey);
+
+                default:
+                    return false;
+            }
+        }
+
+        // ---- confirmation gate: a spoken command never fires a destructive action silently ----
+        //
+        // A destructive command is parked in `voicePending` and the board asks. When voice is
+        // live the microphone re-opens and the answer comes from the next utterance ("yes"/"no",
+        // handled by the pending branch of parseVoiceCommand); when voice is off the same
+        // question is asked on screen.
+        //
+        // Returns true ONLY when the action was approved, so a "waiting for an answer" outcome
+        // never prints a cancellation over the question just posted.
+        function voiceAsk(questionKey, who, parkedAction) {
+            // Dismiss any question left over from an earlier command BEFORE parking this one:
+            // its cancel callback clears voicePending, which would otherwise wipe the action we
+            // are about to ask about.
+            if (voiceConfirmInFlight) voiceConfirmInFlight(false);
+            voicePending = parkedAction;
+            const question = t(questionKey, who ? who : '');
+
+            // The microphone is the answer channel whenever voice is armed. Do not require a
+            // session to be open at this instant: the engine ends its session between utterances,
+            // and the answer "yes" arrives after it has closed — requiring voiceListening here
+            // sent the answer to the on-screen dialog instead of re-opening the microphone.
+            if (voiceSupported && !voiceMuted && voiceArmed) {
+                // Wait for the spoken answer; the microphone re-opens in voiceHandleEnd
+                voiceAwaitAnswer = true;
+                voiceSetChip('result', `${question} ${t('voiceNeedConfirm')}`);
+                if (voiceConfirmInFlight) {
+                    // A dialog was already open for something else — close it and keep waiting
+                    voiceConfirmInFlight(false);
+                }
+                if (!voiceListening) startVoiceListening();
+                return false;
+            }
+
+            // Voice is off. The overlay answers later, from a tap, so it runs the parked action
+            // itself and reports false here; only the synchronous confirm() fallback returns true
+            // for the caller to run.
+            if (voiceConfirm(questionKey, who)) return true;
+            // A dialog is on screen — the tap decides later. Nothing is pending for the caller.
+            if (voiceConfirmInFlight) return false;
+            // No overlay and the answer was no: drop the park so a later stray "yes" is not eaten
+            voicePending = null;
+            voiceSay(t('voiceCancelled'));
+            return false;
+        }
+
+        // Runs the parked action once and clears the park, so a later stray "yes" cannot raise
+        // the same question again.
+        function voiceRunPending() {
+            const parked = voicePending;
+            voicePending = null;
+            if (!parked) return false;
+            return executeVoiceCommand(parked);
+        }
+
+        // On-screen / synchronous confirmation, used when the microphone cannot hear the answer.
+        function voiceConfirm(questionKey, who) {
+            const question = t(questionKey, who ? who : '');
+            const prompt = `${question} ${t('voiceNeedConfirm')}`;
+
+            try {
+                const overlay = document.createElement('div');
+                overlay.className = 'foul-overlay';
+                overlay.innerHTML = `
+                    <div class="foul-box">
+                        <h2>${t('voice')}</h2>
+                        <p>${question}</p>
+                        <div class="foul-note">${t('voiceSayYesNo')}</div>
+                        <div class="foul-actions">
+                            <button class="btn btn-pass-confirm" id="voiceYesBtn">${t('yes')}</button>
+                            <button class="btn btn-cancel" id="voiceNoBtn">${t('no')}</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+
+                let answered = false;
+                function finish(approved) {
+                    if (answered) return false;
+                    answered = true;
+                    if (overlay.parentNode) document.body.removeChild(overlay);
+                    voiceConfirmInFlight = null;
+                    if (approved) {
+                        voiceRunPending();
+                    } else {
+                        voicePending = null;
+                        voiceSay(t('voiceCancelled'));
+                    }
+                    return approved;
+                }
+
+                const yesBtn = overlay.querySelector('#voiceYesBtn');
+                const noBtn = overlay.querySelector('#voiceNoBtn');
+                if (!yesBtn || !noBtn) {
+                    // Never leave an inert modal behind
+                    if (overlay.parentNode) document.body.removeChild(overlay);
+                    throw new Error('voice confirm overlay is incomplete');
+                }
+                yesBtn.addEventListener('click', () => finish(true));
+                noBtn.addEventListener('click', () => finish(false));
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) finish(false);
+                });
+
+                // Only claim the in-flight slot once the overlay is really interactive
+                voiceConfirmInFlight = finish;
+                voiceSetChip('result', prompt);
+                // The answer arrives later, from the tap. No speech synthesis, so the board can
+                // never be heard by its own microphone.
+                return false;
+            } catch (e) {
+                // No usable overlay: ask synchronously and keep the action parked for the caller
+                return !!(typeof window !== 'undefined' && window.confirm && window.confirm(prompt));
+            }
+        }
+
+        // ---- spoken status chip ----
+        let voiceStatus = { key: 'voiceOff', text: '' };
+
+        function voiceSetChip(cls, text) {
+            voiceStatus = { key: null, text, cls };
+            updateVoiceChip();
+        }
+
+        function voiceSay(text) {
+            voiceStatus = { key: null, text, cls: 'result' };
+            updateVoiceChip();
+            voiceChime();
+            return true;
+        }
+
+        function voiceSayError(key, ...args) {
+            const text = t(key, ...args);
+            voiceStatus = { key, text, cls: 'error' };
+            updateVoiceChip();
+            return false;
+        }
+
+        function voiceSayHeard(text) {
+            voiceStatus = { key: null, text, cls: 'listening' };
+            updateVoiceChip();
+        }
+
+        function voiceSayUnknown(text) {
+            voiceStatus = { key: null, text: t('voiceUnknown', text), cls: 'error' };
+            updateVoiceChip();
+        }
+
+        function localVoicePack() {
+            return (I18N[lang] || I18N.en);
+        }
+
+        // Opened from a file, the page is an opaque origin: the microphone grant cannot stick, so
+        // the browser re-asks. The chip says so, and the help sheet explains how to avoid it.
+        function voiceFromFile() {
+            return typeof location !== 'undefined' && location.protocol === 'file:';
+        }
+
+        function updateVoiceChip() {
+            if (!voiceChip) return;
+            const cls = [];
+            // A keyed status follows the language; free text is shown as it was heard
+            const statusText = voiceStatus.key ? t(voiceStatus.key) : voiceStatus.text;
+            let text = statusText;
+            if (!voiceSupported) {
+                text = t('voiceUnsupported');
+                cls.push('voice-error');
+            } else if (voiceMuted) {
+                text = voiceFromFile() ? localVoicePack().voiceFileHint : t('voiceOff');
+                cls.push('voice-on');
+            } else if (voiceListening) {
+                text = statusText || t('voiceListening');
+                cls.push('voice-listening');
+            } else {
+                // Armed but between recognition sessions (the restart gap)
+                text = statusText || t('voiceOn');
+                cls.push(voiceStatus.cls === 'error' ? 'voice-error'
+                    : voiceStatus.cls === 'result' ? 'voice-result' : 'voice-on');
+            }
+            voiceChip.className = 'voice-chip ' + cls.join(' ');
+            voiceChip.title = voiceFromFile() ? localVoicePack().voiceHelpFile : t('voiceToggleTitle');
+            voiceTextEl.textContent = text;
+        }
+
+        // ---- Web Speech API wiring ----
+        // Hands-free: one click arms the board, and it keeps re-opening the microphone after every
+        // utterance until you click again (or press V). The browser's recogniser session is
+        // inherently short and stops itself after an utterance or a stretch of silence, so staying
+        // "listening" means restarting the session each time it ends — which is also why the
+        // audible/visual microphone indicator stays on for the whole session rather than blinking
+        // once per command.
+        let recognition = null;
+        let voiceArmed = false;      // the user wants the microphone live (hands-free mode)
+        let voiceListening = false;  // a recognition session is open right now
+        let voiceMuted = true;       // kept in step with !voiceArmed for the rest of the code
+        let voiceSessionActive = false;
+        let voiceLastTranscript = '';
+        let voiceRestarts = 0;             // guard against a restart loop
+        // A quiet room makes the engine end sessions constantly, so the guard is about avoiding a
+        // tight start() loop, not about limiting normal use. A real utterance resets it, and the
+        // back-off after silence keeps that loop slow.
+        let voiceMaxRestarts = 3000;
+        let voiceRestartDelay = 250;       // gap after an utterance (tests set 0)
+        let voiceSilenceDelay = 600;       // gap after a silent session
+        let voiceHeardSomething = false;   // did the last session produce an utterance?
+        let voiceHandledIndex = -1;        // last processed result index in the current session
+        let voiceLastExecuted = '';        // last dispatched transcript, to catch re-finalised audio
+
+        // The recogniser accepts up to 5 guesses per utterance and knows our ~40 words, so a
+        // near-miss ("yello", "browm", "blu") still lands on a legal command.
+        const VOICE_MAX_ALTERNATIVES = 5;
+        const VOICE_NEAR_MISS = 1;         // edit distance accepted for a single word
+        let voiceLocalStepDelay = 150;     // pause between local capture steps (tests set 0)
+
+        function voiceSpeechCtor() {
+            return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+        }
+
+        // Vocabulary bias would be the ideal accuracy fix, but Chrome documents that it ignores the
+        // contents of a JSGF grammar, so attaching one buys nothing and can only add risk. The
+        // accuracy work is done differently: several alternatives per utterance (below) plus the
+        // near-miss matcher, which only ever snaps a word onto a word the board already knows.
+
+        // Ask for the microphone while the click is still "fresh", then release the device so the
+        // recogniser can open it. Browsers remember the answer per origin, so this is normally a
+        // one-time prompt; keeping it here means the prompt never appears mid-listen.
+        function voiceRequestMic() {
+            const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
+            if (!md || typeof md.getUserMedia !== 'function') return Promise.resolve(true);
+            return md.getUserMedia({ audio: true }).then(stream => {
+                try { stream.getTracks().forEach(track => track.stop()); } catch (e) {}
+                return true;
+            }).catch(() => false);
+        }
+
+        function voiceBuildRecognition() {
+            const Ctor = voiceSpeechCtor();
+            if (!Ctor) return null;
+            const engine = new Ctor();
+            engine.lang = VOICE_SR_LOCALE[lang] || VOICE_SR_LOCALE.en;
+            // Continuous keeps one session open across several commands, which is both fewer
+            // "stopped listening" gaps and fewer of Chrome's per-session start beeps. The engine
+            // still ends the session after a stretch of silence; the restart loop covers that.
+            engine.continuous = true;
+            engine.interimResults = true;
+            engine.maxAlternatives = VOICE_MAX_ALTERNATIVES;
+            return engine;
+        }
+
+        function voiceHandleResult(event) {
+            let interimText = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                const result = event.results[i];
+                if (!result || !result.isFinal) {
+                    if (result) interimText += ` ${voiceResultText(result, 0)}`;
+                    continue;
+                }
+                // Every final result in the event is a candidate command. The engine may report
+                // the same result index more than once, so duplicates are filtered on the text
+                // below rather than on the index — an index guard silently dropped every command
+                // after the first one in a session.
+                const picked = voiceBestTranscript(result);
+                const spokenText = picked && picked.transcript ? picked.transcript : '';
+                const key = spokenText.toLowerCase();
+                // The engine re-finalising the same audio is one utterance, not two commands
+                if (key && key === voiceLastExecuted) {
+                    voiceHeardSomething = true;
+                    voiceLastTranscript = spokenText;
+                    updateVoiceChip();
+                    continue;
+                }
+                if (spokenText) voiceLastExecuted = key;
+                const intent = spokenText ? parseVoiceCommand(spokenText, lang) : null;
+                voiceHeardSomething = true;
+                voiceLastTranscript = spokenText;
+                // When a lower-ranked guess won, show both so a wrong pick is obvious
+                if (intent && picked.picked) {
+                    const top = voiceResultText(result, 0);
+                    voiceSay(t('voicePicked', spokenText, top));
+                } else {
+                    voiceSayHeard(spokenText);
+                }
+                voiceRouteTranscript(spokenText, intent);
+            }
+
+            if (interimText.trim()) {
+                voiceHeardSomething = true;
+                voiceLastTranscript = interimText.trim();
+                voiceSayHeard(voiceLastTranscript);
+            }
+        }
+
+        function voiceResultText(result, i) {
+            const alt = result && result[i];
+            return alt && alt.transcript ? String(alt.transcript).trim() : '';
+        }
+
+        // Pick the guess the board can actually use: the top one when it parses, otherwise the
+        // first alternative that resolves to a real command (a near-miss is better than silence).
+        //
+        // Probing candidates must not disturb a parked confirmation, and parseVoiceCommand's
+        // pending branch has side effects — so while something is pending, ranking is skipped
+        // entirely and the transcript is handed to the normal path untouched.
+        function voiceBestTranscript(result) {
+            const candidates = [];
+            for (let i = 0; i < VOICE_MAX_ALTERNATIVES; i += 1) {
+                const text = voiceResultText(result, i);
+                // The caller reads `.transcript`; building `.text` here silently discarded every
+                // recognised utterance, which looked exactly like "it heard me but did nothing".
+                if (text) candidates.push({ transcript: text, confidence: Number(result[i].confidence) || 0 });
+            }
+            if (!candidates.length) return { transcript: '', confidence: 0 };
+            if (voicePending || candidates.length === 1) return candidates[0];
+
+            if (candidates.some(c => parseVoiceCommand(c.transcript, lang))) return candidates[0];
+
+            const relaxed = VOICE_VOCAB[lang === 'zh' ? 'zh' : 'en'];
+            for (let i = 1; i < candidates.length; i += 1) {
+                const near = voiceNearMiss(candidates[i].transcript, relaxed);
+                if (near && parseVoiceCommand(near, lang)) {
+                    return { transcript: near, confidence: candidates[i].confidence, picked: i };
+                }
+            }
+            return candidates[0];
+        }
+
+        // Match each word against the command vocabulary, allowing one typo ("yello" → "yellow").
+        // Only the word is replaced, and only by a word the board already knows, so an unknown
+        // sentence is still ignored rather than guessed into a score.
+        function voiceNearMiss(text, pack) {
+            const words = [];
+            Object.keys(pack.ball).forEach(value => pack.ball[value].forEach(w => words.push(w)));
+            pack.action.endVisit.concat(pack.action.undo, pack.action.help, pack.action.who,
+                pack.action.concede, pack.action.foul).forEach(w => words.push(w));
+            pack.redAlternative.forEach(pair => words.push(pair[0]));
+
+            let changed = false;
+            const repaired = String(text).split(/\s+/).map(token => {
+                if (token.length < 3) return token;
+                const candidate = words.find(word => voiceCloseEnough(token, word));
+                if (candidate && candidate !== token) {
+                    changed = true;
+                    return candidate;
+                }
+                return token;
+            }).join(' ');
+            if (changed) return repaired;
+
+            // Chinese is unsegmented: the whole phrase is one token, so compare as a whole
+            if (/[\u4e00-\u9fff]/.test(text)) {
+                const word = words.find(candidate => voiceCloseEnough(text, candidate));
+                if (word && word !== text) return word;
+            }
+            return null;
+        }
+
+        function voiceCloseEnough(a, b) {
+            if (a === b) return true;
+            if (Math.abs(a.length - b.length) > VOICE_NEAR_MISS) return false;
+            if (a.length < 3 || b.length < 3) return false;
+            return voiceEditDistance(a, b) <= VOICE_NEAR_MISS;
+        }
+
+        function voiceEditDistance(a, b) {
+            const rows = a.length + 1;
+            const cols = b.length + 1;
+            let previous = new Array(cols);
+            let current = new Array(cols);
+            for (let j = 0; j < cols; j += 1) previous[j] = j;
+            for (let i = 1; i < rows; i += 1) {
+                current[0] = i;
+                for (let j = 1; j < cols; j += 1) {
+                    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                    current[j] = Math.min(
+                        previous[j] + 1,
+                        current[j - 1] + 1,
+                        previous[j - 1] + cost
+                    );
+                }
+                const swap = previous;
+                previous = current;
+                current = swap;
+            }
+            return previous[cols - 1];
+        }
+
+        // "I heard X, and it means Y" — the chip needs both halves, or a transcript that the board
+        // cannot turn into an action looks identical to one that never arrived.
+        function voiceIntentKey(intent) {
+            if (!intent || !intent.kind) return 'voiceIntentUnknown';
+            const map = {
+                pot: 'voiceIntentPot',
+                endVisit: 'voiceIntentEndVisit',
+                foul: 'voiceIntentFoul',
+                undo: 'voiceIntentUndo',
+                newFrame: 'voiceIntentNewFrame',
+                resetMatch: 'voiceIntentResetMatch',
+                concede: 'voiceIntentConcede',
+                help: 'voiceIntentHelp',
+                whoIsAtTable: 'voiceIntentWho',
+                setLanguage: 'voiceIntentLanguage',
+                cancel: 'voiceIntentCancel',
+                confirm: 'voiceIntentConfirm',
+                error: 'voiceIntentUnknown',
+            };
+            return map[intent.kind] || 'voiceIntentUnknown';
+        }
+
+        function voiceRouteTranscript(transcript, preParsedIntent) {
+            voiceLastTranscript = transcript;
+            // A new utterance is the answer to a pending prompt, or it replaces it. Either way
+            // any open question dialog is now stale, so close it before dispatching.
+            if (voiceConfirmInFlight) voiceConfirmInFlight(false);
+            const intent = preParsedIntent || parseVoiceCommand(transcript, lang);
+            if (!intent) {
+                // Say what was heard AND that it mapped to nothing: this is the difference between
+                // a recognition problem and a vocabulary problem.
+                voiceSayError('voiceUnknownFull', transcript);
+                return;
+            }
+            voiceIntentLast = t(voiceIntentKey(intent));
+            executeVoiceCommand(intent);
+        }
+
+        let voiceIntentLast = '';
+
+        function startVoiceListening() {
+            if (!recognition) {
+                recognition = voiceBuildRecognition();
+                if (recognition) {
+                    recognition.onresult = voiceHandleResult;
+                    recognition.onend = voiceHandleEnd;
+                    recognition.onerror = (event) => {
+                        const code = event && event.error ? event.error : '';
+                        voiceListening = false;
+                        voiceSessionActive = false;
+                        // Silence and an interrupted session are normal: back off a little further
+                        if (code === 'no-speech' || code === 'aborted') {
+                            updateVoiceChip();
+                            if (voiceArmed) voiceScheduleRestart(voiceSilenceDelay);
+                            return;
+                        }
+                        if (code === 'not-allowed' || code === 'service-not-allowed') {
+                            voiceArmed = false;
+                            voiceMuted = true;
+                            voiceStatus = { key: 'voiceDenied', text: '', cls: 'error' };
+                            updateVoiceChip();
+                            return;
+                        }
+                        voiceSayError('voiceError');
+                        if (voiceArmed) voiceScheduleRestart();
+                    };
+                }
+            }
+            if (!recognition || !voiceArmed) return;
+            if (voiceConfirmInFlight) return; // waiting on an on-screen answer, keep it calm
+
+            voiceListening = true;
+            voiceSessionActive = true;
+            voiceHandledIndex = -1;
+            voiceLastExecuted = '';
+            voiceLastTranscript = '';
+            voiceHeardSomething = false;
+            updateVoiceChip();
+            try {
+                recognition.lang = VOICE_SR_LOCALE[lang] || VOICE_SR_LOCALE.en;
+                recognition.start();
+            } catch (e) {
+                // start() throws when a session is already running: abandon and let onend decide
+                voiceListening = false;
+                if (voiceArmed) voiceScheduleRestart();
+                else voiceSayError('voiceError');
+            }
+        }
+
+        // Re-open the microphone shortly after the engine closes its session. Hands-free mode
+        // lives or dies on this: the Web Speech API has no real continuous mode, so "always
+        // listening" is a restart loop with a small delay to avoid hammering start().
+        let voiceRestartTimer = null;
+
+        function voiceScheduleRestart(delay) {
+            if (!voiceArmed || voiceConfirmInFlight) return;
+            if (voiceRestarts >= voiceMaxRestarts) {
+                voiceArmed = false;
+                voiceMuted = true;
+                voiceStatus = { key: null, text: t('voiceRestartLimit'), cls: 'error' };
+                updateVoiceChip();
+                return;
+            }
+            voiceRestarts += 1;
+            if (voiceRestartTimer) return;
+            voiceRestartTimer = setTimeout(() => {
+                voiceRestartTimer = null;
+                if (!voiceArmed) return;
+                startVoiceListening();
+            }, delay == null ? voiceRestartDelay : delay);
+        }
+
+        // The engine stops itself after an utterance or a stretch of silence.
+        function voiceHandleEnd() {
+            if (!voiceSessionActive) return;
+            voiceSessionActive = false;
+            voiceListening = false;
+            if (voiceHeardSomething) voiceRestarts = 0; // real speech resets the guard
+            if (!voiceStatus.text && !voiceStatus.key) voiceStatus = { key: null, text: '', cls: null };
+            // Do NOT treat this as answered: the flag means "waiting for the spoken yes/no"
+            updateVoiceChip();
+            if (voiceAwaitAnswer) {
+                if (voiceArmed && voiceSupported) startVoiceListening();
+                return;
+            }
+            if (voiceArmed) voiceScheduleRestart(voiceHeardSomething ? voiceRestartDelay : voiceSilenceDelay);
+        }
+
+        function stopVoiceListening() {
+            if (voiceRestartTimer) {
+                clearTimeout(voiceRestartTimer);
+                voiceRestartTimer = null;
+            }
+            voiceListening = false;
+            voiceSessionActive = false;
+            if (!recognition) return;
+            try { recognition.abort(); } catch (e) {}
+            updateVoiceChip();
+        }
+
+        // Arm/disarm hands-free mode. One click on, one click off — no second click per command.
+        function toggleVoiceMute() {
+            if (!voiceSupported) {
+                voiceArmed = false;
+                voiceMuted = true;
+                voiceStatus = { key: 'voiceUnsupported', text: '', cls: 'error' };
+                updateVoiceChip();
+                return;
+            }
+            if (voiceArmed) {
+                voiceArmed = false;
+                voiceMuted = true;
+                stopVoiceListening();
+                voiceStatus = { key: null, text: '', cls: null };
+                updateVoiceChip();
+                return;
+            }
+            voiceStatus = { key: null, text: '', cls: null };
+            updateVoiceChip();
+            voiceRequestMic().then(allowed => {
+                if (!allowed) {
+                    voiceArmed = false;
+                    voiceMuted = true;
+                    voiceStatus = { key: 'voiceDenied', text: '', cls: 'error' };
+                    updateVoiceChip();
+                    return;
+                }
+                voiceArmed = true;
+                voiceMuted = false;
+                voiceRestarts = 0;
+                startVoiceListening();
+            });
+        }
+
+        // ---- spoken confirmation ("foul five") + optional chime (no speech synthesis, so the
+        //      microphone can never hear the board talk back over the players) ----
+        let audioCtx = null;
+
+        function voiceChime() {
+            try {
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return;
+                if (!audioCtx) audioCtx = new Ctor();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 880;
+                gain.gain.value = 0.05;
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+            } catch (e) {}
+        }
+
+        // ---- voice help sheet ----
+        function showVoiceHelp() {
+            const overlay = document.createElement('div');
+            overlay.className = 'foul-overlay';
+            const rows = VOICE_HELP_KEYS.map(pair => `
+                <div class="voice-help-row">
+                    <code>${t(pair[0])}</code>
+                    <span>${t(pair[1])}</span>
+                </div>
+            `).join('');
+
+            const engineNote = voiceSupported
+                ? t('voiceHelpBrowserOk')
+                : t('voiceHelpBrowserMissing');
+            overlay.innerHTML = `
+                <div class="foul-box">
+                    <h2>${t('voiceHelpTitle')}</h2>
+                    <p>${t('voiceHelpHint')}</p>
+                    <div class="foul-note" style="text-align:left">${t('voiceHelpHint2')}</div>
+                    <div class="voice-help-grid">
+                        ${rows}
+                        <div class="voice-help-row">
+                            <code>${t('voiceHelpNoteLabel')}</code>
+                            <span>${engineNote}</span>
+                        </div>
+                        <div class="voice-set-note" style="text-align:left" id="voiceDiag"></div>
+                    </div>
+                    <div class="foul-actions">
+                        <button class="btn btn-cancel" id="voiceHelpClose">${t('voiceHelpClose')}</button>
+                    </div>
+                    <div class="foul-note" style="margin-top:10px">${t('voiceHelpMic')}</div>
+                    ${voiceFromFile() ? `<div class="foul-note" style="margin-top:6px">${localVoicePack().voiceHelpFile}</div>` : ''}
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const close = () => {
+                if (overlay.parentNode) document.body.removeChild(overlay);
+            };
+            const closeBtn = overlay.querySelector('#voiceHelpClose');
+            if (closeBtn) closeBtn.addEventListener('click', close);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close();
+            });
+        }
+
+        // ---- bind (safe when the chip is missing, e.g. an older saved page) ----
+        function bindVoice() {
+            updateVoiceChip();
+            if (!voiceChip) return;
+            voiceChip.addEventListener('click', () => {
+                // One click arms hands-free listening, the next one stops it
+                toggleVoiceMute();
+            });
+            // A longer press (or right click) opens the phrase sheet
+            voiceChip.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showVoiceHelp();
+            });
+        }
+
+        // ===== VOICE COMMANDS END =====
+
         // ============================================================
         // LOAD / INIT
         // ============================================================
@@ -2020,207 +3285,15 @@
 
         function setLanguage(nextLang) {
             if (!I18N[nextLang] || nextLang === lang) return;
-            stopOfflineVoice();
             lang = nextLang;
             try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
             localizeDefaultNames();
             applyStaticText();
-            setVoiceStatus('voiceOff');
             render();
         }
 
-        let offlineVoice = null;
-        let offlineVoiceStartingClient = null;
-        let voiceStarting = false;
-
-        function setVoiceStatus(key, text, isError) {
-            if (!voiceToggle || !voiceStatusEl) return;
-            voiceStatusEl.textContent = text || t(key);
-            voiceToggle.classList.toggle('voice-error', !!isError);
-            voiceToggle.setAttribute('aria-pressed', offlineVoice || voiceStarting ? 'true' : 'false');
-            voiceToggle.disabled = voiceStarting;
-        }
-
-        function parseOfflineVoiceCommand(transcript) {
-            const text = String(transcript || '').toLowerCase().trim()
-                .replace(/[.,!?;:，。！？、；：]/g, '')
-                .replace(/\s+/g, ' ');
-            const commands = lang === 'zh' ? {
-                '打红球': { type: 'pot', value: 1, reds: 1 },
-                '打进红球': { type: 'pot', value: 1, reds: 1 },
-                '打两颗红球': { type: 'pot', value: 1, reds: 2 },
-                '打进两颗红球': { type: 'pot', value: 1, reds: 2 },
-                '打黄球': { type: 'pot', value: 2 },
-                '打绿球': { type: 'pot', value: 3 },
-                '打咖啡球': { type: 'pot', value: 4 },
-                '打棕球': { type: 'pot', value: 4 },
-                '打蓝球': { type: 'pot', value: 5 },
-                '打粉球': { type: 'pot', value: 6 },
-                '打黑球': { type: 'pot', value: 7 },
-                '本轮结束': { type: 'endVisit' },
-                '结束本轮': { type: 'endVisit' },
-                '撤销': { type: 'undo' },
-                '犯规': { type: 'foul' },
-                '新一局': { type: 'newFrame' },
-                '重置比赛': { type: 'resetMatch' }
-            } : {
-                'pot red': { type: 'pot', value: 1, reds: 1 },
-                'score red': { type: 'pot', value: 1, reds: 1 },
-                'pot one red': { type: 'pot', value: 1, reds: 1 },
-                'pot two reds': { type: 'pot', value: 1, reds: 2 },
-                'score two reds': { type: 'pot', value: 1, reds: 2 },
-                'pot yellow': { type: 'pot', value: 2 },
-                'score yellow': { type: 'pot', value: 2 },
-                'pot green': { type: 'pot', value: 3 },
-                'score green': { type: 'pot', value: 3 },
-                'pot brown': { type: 'pot', value: 4 },
-                'score brown': { type: 'pot', value: 4 },
-                'pot blue': { type: 'pot', value: 5 },
-                'score blue': { type: 'pot', value: 5 },
-                'pot pink': { type: 'pot', value: 6 },
-                'score pink': { type: 'pot', value: 6 },
-                'pot black': { type: 'pot', value: 7 },
-                'score black': { type: 'pot', value: 7 },
-                'end visit': { type: 'endVisit' },
-                'shot taken': { type: 'endVisit' },
-                'undo': { type: 'undo' },
-                'foul': { type: 'foul' },
-                'new frame': { type: 'newFrame' },
-                'reset match': { type: 'resetMatch' }
-            };
-            return commands[text] || null;
-        }
-
-        function runOfflineVoiceCommand(transcript) {
-            const intent = parseOfflineVoiceCommand(transcript);
-            if (!intent) {
-                setVoiceStatus(null, t('voiceUnknown', transcript), true);
-                return;
-            }
-            if (intent.type === 'pot') {
-                const canPot = intent.value === 1
-                    ? canPotReds(intent.reds || 1)
-                    : canPotColor(intent.value);
-                if (!canPot) {
-                    setVoiceStatus('voiceNotAllowed', null, true);
-                    return;
-                }
-                addPoints(state.turn, intent.value, intent.reds || 1);
-                setVoiceStatus(null, t('voiceApplied', intent.value === 1
-                    ? (intent.reds === 2 ? 'two reds' : 'red')
-                    : colorLabel(VALUE_TO_COLOR[intent.value])));
-            } else if (intent.type === 'endVisit') {
-                if (!canTakeShot()) {
-                    setVoiceStatus('voiceNotAllowed', null, true);
-                    return;
-                }
-                takeShot();
-                setVoiceStatus(null, t('voiceApplied', t('shotTaken')));
-            } else if (intent.type === 'undo') {
-                if (!state.history.length) {
-                    setVoiceStatus('voiceNotAllowed', null, true);
-                    return;
-                }
-                undo();
-                setVoiceStatus(null, t('voiceApplied', t('undo')));
-            } else if (intent.type === 'foul') {
-                if (state.frameOver) {
-                    setVoiceStatus('voiceNotAllowed', null, true);
-                    return;
-                }
-                showFoulDialog(state.turn);
-                setVoiceStatus(null, t('voiceFoulOpened'));
-            } else if (intent.type === 'newFrame') {
-                if (!state.history.length && state.A === 0 && state.B === 0 && !state.frameOver) {
-                    setVoiceStatus('voiceNotAllowed', null, true);
-                    return;
-                }
-                if (!confirm(t('voiceResetPrompt'))) return;
-                newFrame();
-                setVoiceStatus(null, t('voiceApplied', t('newFrame')));
-            } else if (intent.type === 'resetMatch') {
-                if (resetMatch()) setVoiceStatus(null, t('voiceApplied', t('resetMatch')));
-            }
-        }
-
-        function stopOfflineVoice() {
-            const client = offlineVoice || offlineVoiceStartingClient;
-            offlineVoice = null;
-            offlineVoiceStartingClient = null;
-            voiceStarting = false;
-            if (client) client.stop();
-            setVoiceStatus('voiceOff');
-        }
-
-        async function toggleOfflineVoice() {
-            if (offlineVoice || voiceStarting) {
-                stopOfflineVoice();
-                return;
-            }
-            if (!window.VoskSpeechClient) {
-                setVoiceStatus('voiceUnavailable', null, true);
-                return;
-            }
-            voiceStarting = true;
-            setVoiceStatus('voiceStarting');
-            const port = lang === 'zh' ? 2701 : 2700;
-            const commands = lang === 'zh'
-                ? ['打红球', '打进红球', '打两颗红球', '打进两颗红球', '打黄球', '打绿球',
-                    '打咖啡球', '打棕球', '打蓝球', '打粉球', '打黑球', '本轮结束', '结束本轮',
-                    '撤销', '犯规', '新一局', '重置比赛']
-                : ['pot red', 'score red', 'pot one red', 'pot two reds', 'score two reds',
-                    'pot yellow', 'score yellow', 'pot green', 'score green', 'pot brown', 'score brown',
-                    'pot blue', 'score blue', 'pot pink', 'score pink', 'pot black', 'score black',
-                    'end visit', 'shot taken', 'undo', 'foul', 'new frame', 'reset match'];
-            const client = new window.VoskSpeechClient({
-                url: `ws://127.0.0.1:${port}`,
-                phraseList: commands,
-                onStatus: status => {
-                    if (client !== offlineVoice && client !== offlineVoiceStartingClient) return;
-                    if (status === 'listening') {
-                        voiceStarting = false;
-                        offlineVoice = client;
-                        offlineVoiceStartingClient = null;
-                        setVoiceStatus('voiceListening');
-                    } else if (status === 'permission') {
-                        voiceStarting = false;
-                        offlineVoice = null;
-                        offlineVoiceStartingClient = null;
-                        setVoiceStatus('voicePermission', null, true);
-                    } else if (status === 'unavailable' || status === 'error') {
-                        voiceStarting = false;
-                        offlineVoice = null;
-                        offlineVoiceStartingClient = null;
-                        setVoiceStatus(status === 'unavailable' ? 'voiceUnavailable' : 'voiceError', null, true);
-                    } else if (status === 'stopped') {
-                        if (offlineVoice === client) offlineVoice = null;
-                        if (offlineVoiceStartingClient === client) offlineVoiceStartingClient = null;
-                        voiceStarting = false;
-                        setVoiceStatus('voiceOff');
-                    }
-                },
-                onFinal: runOfflineVoiceCommand
-            });
-            offlineVoiceStartingClient = client;
-            try {
-                await client.start();
-                if (voiceStarting && offlineVoiceStartingClient === client) {
-                    offlineVoice = client;
-                    offlineVoiceStartingClient = null;
-                    voiceStarting = false;
-                    setVoiceStatus('voiceListening');
-                }
-            } catch (error) {
-                if (client.stopped) return;
-                client.stop();
-                voiceStarting = false;
-                offlineVoice = null;
-                offlineVoiceStartingClient = null;
-                setVoiceStatus(error && error.name === 'NotAllowedError' ? 'voicePermission' : 'voiceUnavailable', null, true);
-            }
-        }
-
         function bindEvents() {
+            if (typeof document.querySelectorAll !== 'function') return;
             // Button clicks
             document.querySelectorAll('.btn-grid .btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -2247,11 +3320,13 @@
             langChips.forEach(chip => {
                 chip.addEventListener('click', () => setLanguage(chip.getAttribute('data-lang')));
             });
-            if (voiceToggle) voiceToggle.addEventListener('click', toggleOfflineVoice);
 
             // Name edit
             nameAEl.addEventListener('click', () => startNameEdit('A'));
             nameBEl.addEventListener('click', () => startNameEdit('B'));
+
+            // Voice control
+            bindVoice();
 
             // Keyboard shortcuts
             document.addEventListener('keydown', (e) => {
@@ -2261,6 +3336,8 @@
                 if (e.key === 's' || e.key === 'S') {
                     if (canTakeShot()) takeShot();
                 }
+                if (e.key === 'v' || e.key === 'V') toggleVoiceMute();
+                if (e.key === '?') showVoiceHelp();
                 if (e.key === '1') setup147Test();
                 if (e.key === '2') setupLastRedTest();
                 if (e.key === '3') quickRedBlack();
@@ -2276,10 +3353,10 @@
             applyStaticText();
             render();
             bindEvents();
-            setVoiceStatus('voiceOff');
             console.log('🎱 Snooker Scorer Pro loaded!');
             console.log('📋 Phase: ' + state.phase + ', Reds: ' + state.reds, '· Lang: ' + lang);
-            console.log('⌨️ Shortcuts: 1=Test147, 2=TestLastRed, 3=QuickRed+Black, 4=PotBlack, S=ShotTaken');
+            console.log('⌨️ Shortcuts: 1=Test147, 2=TestLastRed, 3=QuickRed+Black, 4=PotBlack, S=ShotTaken, V=Voice, ?=VoiceHelp');
+            if (!voiceSupported) console.log('🎙️ Voice needs Chrome or Edge — the 🎙️ chip stays off.');
         }
 
         init();

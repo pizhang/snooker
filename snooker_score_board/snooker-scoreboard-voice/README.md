@@ -1,48 +1,14 @@
 # Snooker Score Board
 
-### v1.6.0
+### v1.6.1
 
-- Added optional offline voice control using local English and Chinese Vosk Docker services.
-- The scoreboard stays usable when Docker or the local Vosk service is unavailable.
-
-- Improved potting history with sequential two-digit numbering, player names, ball colors and icons, and a visible scrollbar for longer histories.
-
-### Offline voice setup
-
-Run `python snooker-scoreboard-voice/serve.py` from this folder, or double-click
-`snooker-scoreboard-voice/serve.bat`. This uses the existing launcher to open the main scoreboard
-at a fixed local address and attempt to start both Vosk Docker services. Docker Desktop must be
-running. On the first launch, Docker downloads the English and Chinese recognition images; later
-launches reuse the cached images. If Docker is missing or the services fail to start, the
-scoreboard still opens and its manual controls work normally.
-
-Wait for the launcher to report that the Vosk services started (or for both containers to show
-as running in Docker Desktop) before turning voice on. If the voice chip reports unavailable while
-the images are still downloading/model is loading, try turning it on again once the containers
-are running.
-
-The microphone permission is saved for the exact browser origin. Reuse the URL printed by the
-launcher (including the same host and port) and the same browser profile to avoid repeated prompts.
-Click **🎙️ Voice** to connect to the offline recognizer for the currently selected UI language.
-The audio is sent only to the Vosk service on this PC. Use `docker compose down` from this folder to
-stop both recognizer containers; add `--no-open` to the Python launcher to serve without opening a
-tab.
-
-Supported spoken phrases are deliberately limited to exact commands, reducing accidental scores
-from background conversation:
-
-| English | 简体中文 |
-| :--- | :--- |
-| `pot red`, `score red`, `pot two reds` | `打红球`, `打进红球`, `打两颗红球` |
-| `pot yellow`, `pot green`, `pot brown`, `pot blue`, `pot pink`, `pot black` | `打黄球`, `打绿球`, `打咖啡球`, `打蓝球`, `打粉球`, `打黑球` |
-| `end visit`, `shot taken` | `本轮结束` |
-| `undo` | `撤销` |
-| `foul` | `犯规` |
-| `new frame`, `reset match` | `新一局`, `重置比赛` |
-
-Pot commands are checked against the current snooker rules before they change the score. New-frame
-and reset actions retain confirmation. If voice is off, unsupported, or the containers are not
-running, all existing touch controls continue to work.
+- **Voice commands are hands-free.** Click the 🎙️ chip once and the board keeps listening — the
+  microphone re-opens itself after every command — until you click it again or press **V**.
+  Commands work in English and 中文, and destructive ones ask first (by voice or on a dialog).
+- v1.6.0 — voice control (superseded: an optional local Whisper engine was tried and removed in
+  v1.6.1 in favour of the browser's recogniser, which needs no install).
+- v1.5.0 — improved potting history with sequential two-digit numbering, player names, ball
+  colors and icons, and a visible scrollbar for longer histories.
 
 ### Languages
 
@@ -185,3 +151,96 @@ After all 15 reds are potted:
 9. **Frame ends!** 🏁
 
 Hand the table over with **🎯 Shot Taken** (or a foul) — potting balls alone does not change the turn.
+
+---
+
+## Voice commands
+
+The **🎙️ Voice** chip sits in the footer next to the language switch. **Click it once and it stays
+listening** — every command is picked up hands-free from then on, until you click the chip again or
+press **V**. A right-click on the chip (or **?**) opens the phrase sheet, and every command is still
+**one Undo away**.
+
+The first time you arm it, the browser asks for microphone access once; it remembers the answer, so
+you should not see that prompt again for this page. While the board is armed the microphone is
+genuinely open (the recogniser re-opens itself after every utterance), so your browser keeps its
+recording indicator on — that is expected, and clicking the chip stops it.
+
+#### Opening the page so the prompt stops repeating
+
+If you open `snooker_scoreboard.html` straight from disk (`file://`), Chrome treats the page as an
+opaque origin and cannot keep the microphone grant, so it asks again on every reload. Serve the
+folder from a fixed local address instead:
+
+```bash
+python serve.py          # serves this folder, picks a free port, opens the browser
+serve.bat                # same thing on Windows, one double-click
+python -m http.server 8360
+```
+
+Then use `http://127.0.0.1:8360/snooker_scoreboard.html`: one grant, remembered from then on. The
+chip says so when it notices it was opened from a file.
+
+**If nothing is recognised**, check the browser's own microphone permission first
+(`chrome://settings/content/microphone`) and which input device Windows has selected. The chip tells
+you what was heard (`❓ Heard "…" — no command matched it` when the transcript arrived but was not a
+command, and nothing at all when no audio arrived). The board uses the browser's speech recogniser
+only; there is no local engine and no server-side configuration.
+
+| Say | What the board does |
+| :--- | :--- |
+| `red` · `one red` · `two reds` | Pots a red (or two reds for 2 points) for the player at the table |
+| `yellow` `green` `brown` `blue` `pink` `black` | Pots that colour — only if the rules allow it right now |
+| `5 points` · `seven` | The same, by ball value |
+| `end of visit` · `shot taken` · `miss` · `pass` · `next player` | Ends the visit and hands the table over |
+| `foul` · `foul five` · `foul five and a red` · `four away` | Opens the same penalty the ⚖️ Foul button applies |
+| `undo` | Reverses the last pot, foul or concession |
+| `new frame` · `reset match` | **Asks first** — mic on: answer `yes` / `no`; mic off: tap **YES** on the dialog |
+| `player a concedes` · `player b concedes` | **Asks first**, then awards the frame to the opponent |
+| `whose turn is it` | Reads back who is at the table |
+| `help` · `what can i say` | Opens the phrase sheet |
+| `speak chinese` · `speak english` | Switches language, including the recogniser |
+
+Chinese works the same way: `红球`, `两颗红球`, `黑球`, `咖啡球`, `犯规`, `本轮结束`, `撤销`,
+`新一局`, `该谁了`, `玩家A认输`, `说中文`.
+
+### How it behaves
+
+- **Voice is not a second scoring path.** A transcript is parsed into one intent and dispatched
+  through exactly the same guarded functions the buttons call, so the turn check and every phase
+  rule still apply: a stray utterance can never score for the wrong player and never leaves the
+  state machine in an illegal phase.
+- **Nothing is guessed.** Unrecognised speech is ignored — the chip shows what it heard with a ❓
+  and no score changes. Destructive commands (**new frame**, **reset match**, **concede**) always
+  ask before they are applied: with the microphone on, the board says "… Confirm?" in the chip,
+  re-opens the microphone, and the next `yes` or `no` decides (or `确认` / `取消` in Chinese); with
+  it off, the same question appears as a dialog whose **YES** runs the action. Words in the table
+  above that also exist as buttons — **foul**, **undo**, **concede** — behave exactly like those
+  buttons; the foul dialog is only opened by the button.
+- **One command per utterance.** The recogniser can return several results for one sentence; the
+  board applies the first final one and ignores the rest of that recognition session, so "red" is
+  scored once. The next utterance is a fresh session, opened automatically.
+- **Speech recognition is a browser feature.** Chrome and Edge implement it; Firefox does not, and
+  there the chip reports that voice is unavailable and the board works exactly as before. Chrome
+  and Edge send the recorded audio to their vendor's speech service to transcribe it, so this is
+  not an offline feature — the design notes cover the alternatives if that matters.
+- **The microphone stays on while armed.** Hands-free means the recogniser is kept alive by
+  re-opening its session after each utterance, so the browser's recording indicator does not blink
+  off between commands. Click the chip (or press **V**) to stop.
+
+### Tests
+
+```bash
+node snooker_rules_test.js   # rules regression (needs a working shell)
+node voice_test.js           # voice parser contract + end-to-end board checks
+```
+
+Both load `snooker_scoreboard.html` through `test_harness.js`, which runs the board's script in a
+`node:vm` context with a DOM stub — no browser and no npm install required.
+
+**[voice_parser_test.html](voice_parser_test.html)** runs the parser cases directly in the browser and
+prints a pass/fail table — no shell needed. It embeds a copy of the parser, and it can also test the
+real one: choose or paste `snooker_scoreboard.html` in the page and it extracts the parser from that
+file, runs every case against it, and prints a drift report showing where the embedded copy has
+fallen behind. `node voice_test.js` is still the suite that covers the board wiring (turn checks,
+undo, the recogniser, the dialogs).

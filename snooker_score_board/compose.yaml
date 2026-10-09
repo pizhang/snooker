@@ -1,0 +1,12 @@
+services:
+  vosk-en:
+    image: alphacep/kaldi-en:latest
+    pull_policy: missing
+    ports:
+      - "127.0.0.1:2700:2700"
+
+  vosk-zh:
+    image: alphacep/kaldi-cn:latest
+    pull_policy: missing
+    ports:
+      - "127.0.0.1:2701:2700"

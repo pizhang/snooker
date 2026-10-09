@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snooker → Voice parser checks</title>
+<style>
+  body { background:#0a1f2e; color:#d8ecf5; font-family:'Segoe UI',system-ui,sans-serif; margin:0; padding:24px; }
+  h1 { color:#d4af37; font-weight:300; letter-spacing:3px; margin:0 0 4px; font-size:1.4rem; }
+  p.sub { color:#6a8a96; margin:0 0 18px; font-size:.85rem; }
+  .card { background:rgba(0,0,0,.45); border:1px solid #2a4a5a; border-radius:10px; padding:14px 18px; margin-bottom:14px; }
+  .summary { font-size:1.15rem; font-weight:700; }
+  .ok { color:#7ee2a8; }
+  .bad { color:#ff8888; }
+  table { border-collapse:collapse; width:100%; font-size:.85rem; }
+  th,td { text-align:left; padding:4px 8px; border-bottom:1px solid #1e3644; vertical-align:top; }
+  th { color:#6a8a96; font-weight:600; }
+  code { color:#ffd966; }
+  .fail td { color:#ffb3b3; }
+  .pass td.result { color:#7ee2a8; }
+  .note { color:#6a8a96; font-size:.8rem; }
+  h2 { font-size:.95rem; color:#9fc6d6; margin:16px 0 6px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<h1>Voice parser checks</h1>
+<p class="sub">
+  Runs the parser contract cases in your browser. The page embeds a copy of the parser, and it can
+  <b>also test the real one</b>: choose or paste <code>snooker_scoreboard.html</code> below and it extracts
+  the parser out of that file and runs every case against it, plus a drift report showing where the
+  embedded copy has fallen behind. A copy is only ever as good as its check.
+</p>
+<div class="card">
+  <h2>Test the real board file</h2>
+  <p class="note" style="margin-top:0">
+    Nothing was executed in the build environment (the shell is blocked by a Windows permission
+    problem on the workspace), so this page exists to give you a real run. In Chrome or Edge, use the
+    picker — a <code>file://</code> page cannot fetch its neighbour, so you have to hand it the file.
+  </p>
+  <input type="file" id="boardFile" accept=".html,text/html">
+  <div style="margin-top:10px"><textarea id="boardPaste" rows="3" placeholder="…or paste the contents of snooker_scoreboard.html here"
+    style="width:100%;background:#0b1a22;color:#d8ecf5;border:1px solid #2a4a5a;border-radius:6px;font-family:monospace"></textarea></div>
+  <div id="realResult" class="note" style="margin-top:8px"></div>
+</div>
+<div class="card" id="summary">running…</div>
+<div class="card"><h2>Failures</h2><div id="failures">none</div></div>
+<div class="card"><h2>Every case</h2><div id="table"></div></div>
+<div class="card note" id="cannot"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------
+  // The parser, copied verbatim in behaviour from snooker_scoreboard.html.
+  // If you change one side, change the other — the HTML test suite guards the real file.
+  // ------------------------------------------------------------------
+  var VOICE_NUM_WORDS = {
+    zero: 0, oh: 0, nought: 0, one: 1, won: 1, two: 2, to: 2, too: 2, three: 3, four: 4,
+    for: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10
+  };
+  var VOICE_ZH_NUM = { '零': 0, '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7 };
+
+  var VOICE_VOCAB = {
+    en: {
+      yes: ['yes', 'yeah', 'yep', 'yup', 'confirm', 'confirmed', 'correct', 'apply', 'do it', 'ok', 'okay'],
+      no: ['no', 'nope', 'nah', 'cancel', 'stop', 'negative', 'deny', 'do not', "don't", 'dont'],
+      ball: {
+        1: ['red', 'reds', 'red ball', 'a red', 'one red'],
+        2: ['yellow', 'yellow ball'], 3: ['green', 'green ball'], 4: ['brown', 'brown ball'],
+        5: ['blue', 'blue ball'], 6: ['pink', 'pink ball'], 7: ['black', 'black ball', 'the black']
+      },
+      redSingular: ['red', 'red ball'],
+      redAlternative: [['one red', 1], ['a red', 1], ['two reds', 2], ['2 reds', 2], ['both reds', 2]],
+      foul: ['foul', 'foul shot', 'foul stroke', 'push shot', 'penalty', 'penalty points'],
+      foulPhrases: [/\bfoul\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/,
+        /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:points?\s+)?(?:away|penalty)\b/],
+      andRed: ['and a red', 'and the red', 'and red', 'red also', 'red too', 'plus a red', 'red potted'],
+      action: {
+        undo: ['undo', 'undo that', 'undo last', 'go back', 'take back', 'revert', 'scratch that', 'undo it'],
+        endVisit: ['end of visit', 'end visit', 'visit over', 'shot taken', 'end of break', 'end break',
+          'end of turn', 'end turn', 'turn over', 'next player', 'switch player', 'other player',
+          'hand over', 'handover', 'table over', 'pass', 'miss', 'missed', 'no pot', 'enough',
+          'stop', 'next', 'done'],
+        foul: ['foul'],
+        newFrame: ['new frame', 'next frame', 'start new frame', 'new game', 'next game', 'new rack', 'begin a new frame'],
+        resetMatch: ['reset match', 'reset the match', 'reset game', 'reset score', 'reset scores', 'clear scores', 'start over', 'new match'],
+        concede: ['concede', 'concedes', 'conceded', 'concession', 'i resign', 'resign', 'give up', 'gives up', 'forfeit', 'forfeits', 'i lose'],
+        who: ['whose turn', 'whose turn is it', "who's turn", 'who is at the table', 'who is playing', 'who is on', 'who is in', 'who plays next', 'current player', 'who is at the table now'],
+        help: ['help', 'what can i say', 'what can i do', 'list commands', 'show commands', 'voice commands'],
+        language: ['speak english', 'switch to english', 'english please', 'in english',
+          'speak chinese', 'switch to chinese', 'chinese please', 'in chinese'],
+        yes: ['yes', 'yeah', 'yep', 'confirm', 'confirmed', 'correct', 'ok', 'okay', 'do it', 'apply'],
+        no: ['no', 'nope', 'cancel', 'stop', 'deny', 'do not', "don't", 'dont']
+      },
+      playerOther: ['player b', 'player two', 'player 2', 'b', 'second player'],
+      playerSelf: ['player a', 'player one', 'player 1', 'a', 'first player'],
+      playerKeyword: ['player', 'players'],
+      negations: ["don't", 'dont', 'do not', 'not', 'no', 'never'],
+      clauseBreaks: [', ', ' and then ', ' but ', ' then '],
+      fillers: ['please', 'the', 'a', 'an', 'ball', 'pot', 'potting', 'potted', 'pocket', 'pocketed', 'score',
+        'scored', 'scores', 'points', 'point', 'for', 'to', 'my', 'me', 'in', 'into', 'down', 'goes',
+        'went', 'it', 'is', 'was', 'and', 'that', 'again', 'just', 'now', 'yeah', 'ok', 'okay', 'so',
+        'um', 'uh', 'er', 'uhh', 'like', 'well']
+    },
+    zh: {
+      yes: ['确认', '确定', '是', '好', '好的', '对', '可以', '应用'],
+      no: ['取消', '不', '不要', '不对', '否', '算了'],
+      ball: { 1: ['红球', '红', '一颗红球'], 2: ['黄球', '黄'], 3: ['绿球', '绿'], 4: ['咖啡球', '咖啡', '棕球'],
+        5: ['蓝球', '蓝'], 6: ['粉球', '粉'], 7: ['黑球', '黑'] },
+      redSingular: ['红球', '红'],
+      redAlternative: [['一颗红球', 1], ['一个红球', 1], ['两颗红球', 2], ['两个红球', 2], ['两红', 2]],
+      foul: ['犯规', '罚分'],
+      foulPhrases: [/(\d+)\s*分/, /([一二两三四五六七八九十])\s*分/],
+      andRed: ['带红球', '红球也算', '打了红球', '有红球'],
+      action: {
+        undo: ['撤销', '撤回', '取消上一步', '返回上一步', '退一步'],
+        endVisit: ['本轮结束', '换人', '结束本轮', '这一轮结束', '打完了', '交球', '轮到对方', '下一杆'],
+        foul: ['犯规', '罚分'],
+        newFrame: ['新一局', '下一局', '开始新一局', '新局'],
+        resetMatch: ['重置比赛', '重置整场', '重新开始', '清除比分'],
+        concede: ['认输', '投降', '放弃', '我认输'],
+        who: ['该谁了', '现在谁打', '轮到谁', '谁击球', '谁在打'],
+        help: ['帮助', '指令', '语音指令', '能说什么'],
+        language: ['说中文', '切换中文', '中文', '说英文', '切换英文', '英文'],
+        yes: ['确认', '确定', '是', '好', '好的', '对'],
+        no: ['取消', '不', '不要', '不对', '否']
+      },
+      playerOther: ['玩家b', '玩家二', '玩家乙', 'b方', '乙方', '对方', '对手'],
+      playerSelf: ['玩家 a', '玩家a', '玩家一', '玩家甲', 'a方', '甲方', '我'],
+      playerKeyword: ['玩家'],
+      negations: ['不要', '别', '没有', '没', '不'],
+      clauseBreaks: ['，', '。', '但', '然后', '而且'],
+      fillers: ['请', '帮我', '一下', '这颗', '那颗', '这杆', '打进', '进了', '得分', '分', '的', '了', '吧', '啊', '嗯', '呢']
+    }
+  };
+
+  function voiceEscape(t) { return String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function voiceHasPhrase(h, p) { return p.some(function (x) { return h.indexOf(x) !== -1; }); }
+
+  function voiceAnyNumber(text) {
+    var digit = text.match(/\d+/);
+    if (digit) return parseInt(digit[0], 10);
+    var tokens = text.split(/\s+/);
+    for (var i = 0; i < tokens.length; i += 1) {
+      if (Object.prototype.hasOwnProperty.call(VOICE_NUM_WORDS, tokens[i])) return VOICE_NUM_WORDS[tokens[i]];
+    }
+    return null;
+  }
+
+  function voiceZhNumber(text) {
+    var digit = text.match(/\d+/);
+    if (digit) return parseInt(digit[0], 10);
+    var keys = Object.keys(VOICE_ZH_NUM);
+    for (var i = 0; i < keys.length; i += 1) {
+      if (text.indexOf(keys[i]) !== -1) return VOICE_ZH_NUM[keys[i]];
+    }
+    return null;
+  }
+
+  function voiceDropNegated(text, negations, clauseBreaks) {
+    var alternatives = negations.slice().sort(function (a, b) { return b.length - a.length; })
+      .map(voiceEscape).join('|');
+    if (!alternatives) return text;
+
+    var ascii = /^[\x20-\x7E]*$/.test(negations.join(' '));
+    var boundary = ascii ? '\\b' : '';
+    var match = new RegExp('(?:' + boundary + '(?:' + alternatives + ')' + boundary + ')', 'i').exec(text);
+    if (!match) return text;
+
+    var breaks = (clauseBreaks || []).slice().sort(function (a, b) { return b.length - a.length; });
+    var from = match.index + match[0].length;
+    var end = text.length;
+    breaks.forEach(function (word) {
+      var at = text.indexOf(word, from);
+      if (at !== -1 && at < end) end = at;
+    });
+
+    var kept = end >= text.length ? '' : text.slice(end);
+    return (text.slice(0, match.index) + ' ' + kept).replace(/\s+/g, ' ').trim();
+  }
+
+  function voiceNormalize(text) {
+    return String(text == null ? '' : text).toLowerCase()
+      // Commas survive: voiceDropNegated treats ", " as a clause break
+      .replace(/[!?;.]/g, ' ')
+      .replace(/[-_/\\]+/g, ' ')
+      .replace(/,+/g, ', ')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*,\s*/g, ', ')
+      .trim();
+  }
+
+  // Which player an utterance names: 'A', 'B' or null
+  var NAME_A = 'Player A';
+  var NAME_B = 'Player B';
+
+  function voiceFindPlayer(text, zhPack) {
+    var pack = zhPack ? VOICE_VOCAB.zh : VOICE_VOCAB.en;
+    var normalized = voiceNormalize(text);
+    var tokens = normalized.split(zhPack ? /[\s,，。；：]+/ : /\s+/).filter(Boolean);
+    var haystack = ' ' + normalized + ' ';
+    var says = function (phrases) {
+      return phrases.some(function (phrase) {
+        var clean = voiceNormalize(phrase);
+        if (!clean) return false;
+        if (tokens.indexOf(clean) !== -1) return true;
+        if (haystack.indexOf(' ' + clean + ' ') !== -1) return true;
+        return zhPack && normalized.indexOf(clean) !== -1;
+      });
+    };
+    var nameA = voiceNormalize(NAME_A);
+    var nameB = voiceNormalize(NAME_B);
+    var spokenA = !!nameA && says([nameA]);
+    var spokenB = !!nameB && says([nameB]);
+    if (spokenA && !spokenB) return 'A';
+    if (spokenB && !spokenA) return 'B';
+    if (spokenA && spokenB) return null;
+    var labelA = says(pack.playerSelf);
+    var labelB = says(pack.playerOther);
+    if (labelA && !labelB) return 'A';
+    if (labelB && !labelA) return 'B';
+    return null;
+  }
+
+  var NAME_A = 'Player A';
+  var NAME_B = 'Player B';
+
+  var voicePending = null;
+
+  function parseVoiceCommand(transcript, langOverride) {
+    var pack = VOICE_VOCAB[langOverride === 'zh' ? 'zh' : 'en'];
+    var raw = String(transcript == null ? '' : transcript);
+    var text = voiceNormalize(raw);
+    if (!text) return null;
+    var zhPack = langOverride === 'zh' || /[\u4e00-\u9fff]/.test(raw);
+    if (zhPack) text = text.replace(/[\s,，。！？、；：]/g, '');
+    var zhNumber = zhPack ? voiceZhNumber(text) : null;
+    var actions = pack.action;
+
+    if (voicePending) {
+      if (pack.yes.indexOf(text) !== -1 || actions.yes.indexOf(text) !== -1) {
+        var pending = voicePending;
+        voicePending = null;
+        return { kind: 'confirm', intent: pending };
+      }
+      if (pack.no.indexOf(text) !== -1 || actions.no.indexOf(text) !== -1) {
+        voicePending = null;
+        return { kind: 'cancel' };
+      }
+      voicePending = null;
+    }
+
+    text = voiceDropNegated(text, pack.negations, pack.clauseBreaks);
+    if (!text.trim()) return null;
+    var padded = zhPack ? text : ' ' + text + ' ';
+    var has = function (p) { return voiceHasPhrase(padded, p); };
+
+    if (has(actions.help)) return { kind: 'help' };
+    if (has(actions.who)) return { kind: 'whoIsAtTable' };
+
+    var foulWord = has(actions.foul) || has(pack.foul);
+    // The numbered patterns are only consulted once the foul word is present, because the
+    // Chinese pattern matches a bare 一分 and would otherwise match the 一 inside 新一局
+    var foulPhraseRaw = foulWord
+      ? (pack.foulPhrases.map(function (re) { return raw.toLowerCase().match(re); }).filter(Boolean)[0] || null)
+      : null;
+    var penaltyShape = /^\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:points?\s+)?away\b/.test(text);
+    if (foulWord || penaltyShape) {
+      var spokenFoul = (foulPhraseRaw && voiceAnyNumber(foulPhraseRaw[1])) ||
+        (penaltyShape && voiceAnyNumber(text)) || null;
+      var pts = spokenFoul || zhNumber || 4;
+      if (pts < 4 || pts > 7) return { kind: 'error', messageKey: 'voiceFoulRange' };
+      return { kind: 'foul', pts: pts, redAlsoPotted: has(pack.andRed) };
+    }
+
+    var redMulti = pack.redAlternative.filter(function (pair) { return has([pair[0]]); })[0];
+    if (redMulti) return { kind: 'pot', value: 1, reds: redMulti[1] };
+    if (zhPack && /两[颗个]?红/.test(text)) return { kind: 'pot', value: 1, reds: 2 };
+    if (has(pack.redSingular)) return { kind: 'pot', value: 1, reds: 1 };
+
+    var colored = [2, 3, 4, 5, 6, 7].filter(function (v) { return has(pack.ball[v]); })[0];
+    if (colored) return { kind: 'pot', value: colored, reds: 1 };
+
+    // Actions are checked BEFORE a bare number: the 一 inside 新一局 otherwise reads as "1 point"
+    if (has(actions.endVisit)) return { kind: 'endVisit' };
+    if (has(actions.undo)) return { kind: 'undo' };
+    if (has(actions.newFrame)) return { kind: 'newFrame', needsConfirm: true };
+    if (has(actions.resetMatch)) return { kind: 'resetMatch', needsConfirm: true };
+    if (has(actions.concede)) return { kind: 'concede', who: voiceFindPlayer(text, zhPack) };
+    if (has(actions.language)) return { kind: 'setLanguage', lang: has(['english', '英文']) ? 'en' : 'zh' };
+
+    var spokenNumber = zhNumber != null ? zhNumber : voiceAnyNumber(text);
+    if (spokenNumber != null) {
+      if (spokenNumber >= 2 && spokenNumber <= 7) return { kind: 'pot', value: spokenNumber, reds: 1 };
+      if (spokenNumber === 1) return { kind: 'pot', value: 1, reds: 1 };
+      return null;
+    }
+    return null;
+  }
+
+  // ------------------------------------------------------------------
+  // Cases: [transcript, lang, expected] — expected is the JSON of the intent
+  // ------------------------------------------------------------------
+  var CASES = [
+    ['red', 'en', { kind: 'pot', value: 1, reds: 1 }],
+    ['one red', 'en', { kind: 'pot', value: 1, reds: 1 }],
+    ['a red', 'en', { kind: 'pot', value: 1, reds: 1 }],
+    ['red please', 'en', { kind: 'pot', value: 1, reds: 1 }],
+    ['two reds', 'en', { kind: 'pot', value: 1, reds: 2 }],
+    ['yellow', 'en', { kind: 'pot', value: 2, reds: 1 }],
+    ['green', 'en', { kind: 'pot', value: 3, reds: 1 }],
+    ['brown', 'en', { kind: 'pot', value: 4, reds: 1 }],
+    ['blue', 'en', { kind: 'pot', value: 5, reds: 1 }],
+    ['pink', 'en', { kind: 'pot', value: 6, reds: 1 }],
+    ['black', 'en', { kind: 'pot', value: 7, reds: 1 }],
+    ['pot the black', 'en', { kind: 'pot', value: 7, reds: 1 }],
+    ['5 points', 'en', { kind: 'pot', value: 5, reds: 1 }],
+    ['seven', 'en', { kind: 'pot', value: 7, reds: 1 }],
+    ['foul', 'en', { kind: 'foul', pts: 4, redAlsoPotted: false }],
+    ['foul four', 'en', { kind: 'foul', pts: 4, redAlsoPotted: false }],
+    ['foul five', 'en', { kind: 'foul', pts: 5, redAlsoPotted: false }],
+    ['four away', 'en', { kind: 'foul', pts: 4, redAlsoPotted: false }],
+    ['seven away', 'en', { kind: 'foul', pts: 7, redAlsoPotted: false }],
+    ['foul four and a red', 'en', { kind: 'foul', pts: 4, redAlsoPotted: true }],
+    ['three away', 'en', { kind: 'error', messageKey: 'voiceFoulRange' }],
+    ['end of visit', 'en', { kind: 'endVisit' }],
+    ['shot taken', 'en', { kind: 'endVisit' }],
+    ['miss', 'en', { kind: 'endVisit' }],
+    ['pass', 'en', { kind: 'endVisit' }],
+    ['turn over', 'en', { kind: 'endVisit' }],
+    ['next player', 'en', { kind: 'endVisit' }],
+    ['undo', 'en', { kind: 'undo' }],
+    ['undo that', 'en', { kind: 'undo' }],
+    ['new frame', 'en', { kind: 'newFrame', needsConfirm: true }],
+    ['reset match', 'en', { kind: 'resetMatch', needsConfirm: true }],
+    ['whose turn is it', 'en', { kind: 'whoIsAtTable' }],
+    ['help', 'en', { kind: 'help' }],
+    ['what can i say', 'en', { kind: 'help' }],
+    ['speak chinese', 'en', { kind: 'setLanguage', lang: 'zh' }],
+    ['speak english', 'en', { kind: 'setLanguage', lang: 'en' }],
+    ['', 'en', null],
+    ['banana', 'en', null],
+    ['the weather is nice', 'en', null],
+    ['12345', 'en', null],
+    ['no red', 'en', null],
+    ['oh no', 'en', null],
+    ['not blue, yellow', 'en', { kind: 'pot', value: 2, reds: 1 }],
+    ['not the black, red', 'en', { kind: 'pot', value: 1, reds: 1 }],
+    ['not blue then yellow', 'en', { kind: 'pot', value: 2, reds: 1 }],
+    ['not red but black', 'en', { kind: 'pot', value: 7, reds: 1 }],
+    ['not black', 'en', null],
+    ['not blue', 'en', null],
+    ['not yellow then blue', 'en', { kind: 'pot', value: 5, reds: 1 }],
+    ['no pink', 'en', null],
+    ['never mind the black', 'en', null],
+    ["don't pot the black", 'en', null],
+    ['not black and then black', 'en', { kind: 'pot', value: 7, reds: 1 }],
+    ['red black', 'en', { kind: 'pot', value: 1, reds: 1 }],
+    ['红球', 'zh', { kind: 'pot', value: 1, reds: 1 }],
+    ['两颗红球', 'zh', { kind: 'pot', value: 1, reds: 2 }],
+    ['黑球', 'zh', { kind: 'pot', value: 7, reds: 1 }],
+    ['咖啡球', 'zh', { kind: 'pot', value: 4, reds: 1 }],
+    ['犯规', 'zh', { kind: 'foul', pts: 4, redAlsoPotted: false }],
+    ['本轮结束', 'zh', { kind: 'endVisit' }],
+    ['撤销', 'zh', { kind: 'undo' }],
+    ['新一局', 'zh', { kind: 'newFrame', needsConfirm: true }],
+    ['该谁了', 'zh', { kind: 'whoIsAtTable' }],
+    ['说中文', 'zh', { kind: 'setLanguage', lang: 'zh' }],
+    ['不要打黑球', 'zh', null],
+    ['别打黑球', 'zh', null],
+    ['卡布奇诺', 'zh', null]
+  ];
+
+  var NAME_CASES = [
+    ['player a concedes', 'en', 'A'],
+    ['a concedes', 'en', 'A'],
+    ['player one concedes', 'en', 'A'],
+    ['player b concedes', 'en', 'B'],
+    ['player b resigns', 'en', 'B'],
+    ['i concede', 'en', null],
+    ['concede', 'en', null],
+    ['玩家a认输', 'zh', 'A'],
+    ['玩家b认输', 'zh', 'B']
+  ];
+
+  var passed = 0, failed = 0, rows = [], nameRows = [];
+
+  // ------------------------------------------------------------------
+  // Test the REAL parser: extract it from a chosen/pasted board file.
+  // A file:// page cannot fetch its neighbour, so the user hands the file over.
+  // ------------------------------------------------------------------
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  function sourceSlice(src, name) {
+    const start = src.search(new RegExp('function\\s+' + name + '\\s*\\('));
+    if (start === -1) return null;
+    const open = src.indexOf('{', start);
+    if (open === -1) return null;
+    let depth = 0;
+    for (let i = open; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1;
+      else if (src[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return src.slice(start, i + 1).trim();
+      }
+    }
+    return null;
+  }
+
+  function constSlice(src, name) {
+    const start = src.search(new RegExp('const\\s+' + name + '\\s*='));
+    if (start === -1) return null;
+    let depth = 0, seen = false;
+    for (let i = src.indexOf('=', start); i < src.length; i += 1) {
+      if (src[i] === '{' || src[i] === '[') { depth += 1; seen = true; }
+      else if (src[i] === '}' || src[i] === ']') {
+        depth -= 1;
+        if (seen && depth === 0) {
+          const semi = src.indexOf(';', i);
+          return src.slice(start, semi === -1 ? i + 1 : semi + 1).trim();
+        }
+      }
+    }
+    return null;
+  }
+
+  function loadRealParser(html) {
+    const match = html.match(/<script>([\s\S]*?)<\/script>/);
+    if (!match) throw new Error('no <script> block in that file');
+    const src = match[1];
+    const parts = [constSlice(src, 'VOICE_VOCAB'), constSlice(src, 'VOICE_NUM_WORDS'), constSlice(src, 'VOICE_ZH_NUM')];
+    ['voiceEscape', 'voiceHasPhrase', 'voiceAnyNumber', 'voiceZhNumber', 'voiceDropNegated',
+      'voiceNormalize', 'voiceFindPlayer', 'parseVoiceCommand'].forEach(name => parts.push(sourceSlice(src, name)));
+    if (parts.some(p => !p)) {
+      throw new Error('could not locate every parser piece — the board file may have changed shape');
+    }
+    const parseVoiceCommand = new Function(`'use strict';
+      const state = { nameA: 'Player A', nameB: 'Player B', turn: 'A' };
+      let voicePending = null;
+      ${parts.join('\n')}
+      return parseVoiceCommand;`)();
+    return { parse: parseVoiceCommand, parts, src };
+  }
+
+  function stripNoise(text) {
+    return String(text).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '').replace(/\s+/g, '');
+  }
+
+  function runReal(html) {
+    const out = document.getElementById('realResult');
+    let real;
+    try {
+      real = loadRealParser(html);
+    } catch (err) {
+      out.innerHTML = '<span class="bad">Could not read the parser from that file: ' + esc(err.message) + '</span>';
+      return;
+    }
+
+    let p = 0, f = 0;
+    const bad = [];
+    CASES.forEach(c => {
+      let got, error = null;
+      try { got = real.parse(c[0], c[1]); } catch (e) { error = e.message; }
+      const actual = error ? ('THREW: ' + error) : JSON.stringify(got === undefined ? null : got);
+      if (!error && actual === JSON.stringify(c[2])) p += 1;
+      else { f += 1; bad.push({ t: c[0], expected: JSON.stringify(c[2]), actual }); }
+    });
+
+    const names = [
+      ['voiceDropNegated', voiceDropNegated], ['voiceFindPlayer', voiceFindPlayer],
+      ['voiceNormalize', voiceNormalize], ['voiceZhNumber', voiceZhNumber]
+    ];
+    const drift = names.filter(([n, fn]) => {
+      const slice = sourceSlice(real.src, n);
+      return !slice || stripNoise(slice) !== stripNoise(String(fn));
+    }).map(([n]) => n);
+
+    out.innerHTML =
+      '<div class="summary ' + (f ? 'bad' : 'ok') + '">Real parser: ' +
+      (f ? f + ' FAILED, ' + p + ' passed' : 'all ' + p + ' cases passed') + '</div>' +
+      (bad.length ? '<table><tr><th>transcript</th><th>expected</th><th>actual</th></tr>' +
+        bad.map(r => '<tr class="fail"><td><code>' + esc(JSON.stringify(r.t)) + '</code></td><td>' +
+          esc(r.expected) + '</td><td>' + esc(r.actual) + '</td></tr>').join('') + '</table>' : '') +
+      '<div style="margin-top:8px">' + (drift.length
+        ? '<span class="bad">DRIFT:</span> the embedded copy differs from the real file in: ' + drift.join(', ') +
+          ' — the cases above are authoritative; update the copy.'
+        : '<span class="ok">No drift:</span> the embedded helpers match the real file.') + '</div>';
+  }
+
+  const boardFile = document.getElementById('boardFile');
+  const boardPaste = document.getElementById('boardPaste');
+  if (boardFile) {
+    boardFile.addEventListener('change', () => {
+      const file = boardFile.files && boardFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => runReal(String(reader.result));
+      reader.readAsText(file);
+    });
+  }
+  if (boardPaste) {
+    boardPaste.addEventListener('paste', () => setTimeout(() => {
+      if (boardPaste.value.indexOf('<script') !== -1) runReal(boardPaste.value);
+    }, 0));
+  }
+
+  NAME_CASES.forEach(function (c) {
+    var got = voiceFindPlayer(c[0], c[1] === 'zh' || /[\u4e00-\u9fff]/.test(c[0]));
+    var expected = JSON.stringify(c[2]);
+    var actual = JSON.stringify(got);
+    var okCase = actual === expected;
+    if (okCase) passed += 1; else failed += 1;
+    nameRows.push({ t: c[0], expected: expected, actual: actual, ok: okCase });
+  });
+  CASES.forEach(function (c) {
+    var got, error = null;
+    try { got = parseVoiceCommand(c[0], c[1]); } catch (e) { error = e.message; }
+    var expected = JSON.stringify(c[2]);
+    var actual = error ? ('THREW: ' + error) : JSON.stringify(got === undefined ? null : got);
+    var okCase = !error && actual === expected;
+    if (okCase) passed += 1; else failed += 1;
+    rows.push({ t: c[0], lang: c[1], expected: expected, actual: actual, ok: okCase });
+  });
+
+  // ------------------------------------------------------------------
+  // The negation helper, shown directly: what is left after stripping
+  // ------------------------------------------------------------------
+  var STRIP_CASES = [
+    ['not blue, yellow', 'en'], ['not blue then yellow', 'en'], ['not red but black', 'en'],
+    ['not black', 'en'], ['no red', 'en'], ['oh no', 'en'], ["don't pot the black", 'en'],
+    ['not black and then black', 'en'],
+    ['不要打黑球', 'zh'], ['别打黑球', 'zh'], ['不 红球', 'zh'], ['红球然后黑球', 'zh']
+  ];
+
+  document.getElementById('summary').innerHTML =
+    '<div class="summary ' + (failed ? 'bad' : 'ok') + '">' +
+    (failed ? failed + ' FAILED, ' + passed + ' passed' : 'All ' + passed + ' checks passed') +
+    '</div><div class="note">' + CASES.length + ' parser cases + ' + NAME_CASES.length +
+    ' player-identification cases, run at ' + new Date().toLocaleString() + '</div>';
+
+  document.getElementById('failures').innerHTML = failed === 0
+    ? '<span class="ok">none</span>'
+    : '<table><tr><th>transcript</th><th>lang</th><th>expected</th><th>actual</th></tr>' +
+      rows.filter(function (r) { return !r.ok; }).concat(nameRows.filter(function (r) { return !r.ok; }))
+        .map(function (r) {
+          return '<tr class="fail"><td><code>' + esc(JSON.stringify(r.t)) + '</code></td><td>' + r.lang +
+            '</td><td>' + esc(r.expected) + '</td><td>' + esc(r.actual) + '</td></tr>';
+        }).join('') + '</table>';
+
+  document.getElementById('table').innerHTML = '<table><tr><th>#</th><th>transcript</th><th>lang</th>' +
+    '<th>result</th><th>intent</th></tr>' + rows.map(function (r, i) {
+      return '<tr class="' + (r.ok ? 'pass' : 'fail') + '"><td>' + (i + 1) + '</td><td><code>' +
+        esc(JSON.stringify(r.t)) + '</code></td><td>' + r.lang + '</td><td class="result">' +
+        (r.ok ? 'PASS' : 'FAIL') + '</td><td>' + esc(r.actual) + '</td></tr>';
+    }).join('') + '</table>' +
+    '<h2>Player identification (names Player A / Player B)</h2>' +
+    '<table><tr><th>transcript</th><th>lang</th><th>result</th><th>who</th></tr>' +
+    nameRows.map(function (r) {
+      return '<tr class="' + (r.ok ? 'pass' : 'fail') + '"><td><code>' + esc(JSON.stringify(r.t)) +
+        '</code></td><td>' + (/[\u4e00-\u9fff]/.test(r.t) ? 'zh' : 'en') + '</td><td class="result">' +
+        (r.ok ? 'PASS' : 'FAIL') + '</td><td>' + esc(r.actual) + '</td></tr>';
+    }).join('') + '</table>';
+
+  document.getElementById('cannot').innerHTML =
+    '<h2>What this page cannot cover</h2>' +
+    'It exercises the <b>parser only</b> — pure text in, intent out. The board wiring (turn checks, ' +
+    'phase guards, undo, the Web Speech API, the confirmation dialogs) needs ' +
+    '<code>node voice_test.js</code> and <code>node snooker_rules_test.js</code> once a shell works, ' +
+    'which also test the real file rather than this copy. Negation stripping, for reference: ' +
+    STRIP_CASES.map(function (c) {
+      var pack = VOICE_VOCAB[c[1]];
+      var out = voiceNormalize(c[0]);
+      if (c[1] === 'zh') out = out.replace(/[\s,，。！？、；：]/g, '');
+      out = voiceDropNegated(out, pack.negations, pack.clauseBreaks);
+      return '<br>&nbsp;&nbsp;<code>' + esc(c[0]) + '</code> &rarr; <code>' + esc(out) + '</code>';
+    }).join('');
+})();
+</script>
+</body>
+</html>
