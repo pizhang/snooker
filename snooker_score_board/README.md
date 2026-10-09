@@ -9,40 +9,112 @@
 
 ### Offline voice setup
 
-Run `python snooker-scoreboard-voice/serve.py` from this folder, or double-click
-`snooker-scoreboard-voice/serve.bat`. This uses the existing launcher to open the main scoreboard
-at a fixed local address and attempt to start both Vosk Docker services. Docker Desktop must be
-running. On the first launch, Docker downloads the English and Chinese recognition images; later
-launches reuse the cached images. If Docker is missing or the services fail to start, the
-scoreboard still opens and its manual controls work normally.
+The main `snooker_scoreboard.html` uses local Vosk containers for offline voice recognition. Docker
+Desktop must be installed and running with its **WSL 2** engine enabled. WSL 2 must be installed
+(on Windows, `wsl --install` from an Administrator PowerShell installs it), and Docker Desktop must
+show that its engine is running before starting the services.
 
-Wait for the launcher to report that the Vosk services started (or for both containers to show
-as running in Docker Desktop) before turning voice on. If the voice chip reports unavailable while
-the images are still downloading/model is loading, try turning it on again once the containers
-are running.
+The English and Chinese recognition models use several GiB of memory each. As a practical guide,
+on this PC the loaded English model used about 4 GiB and the Chinese model about 3 GiB; startup can
+need more memory temporarily. **16 GiB of system RAM is recommended to run both together.** On a
+16 GiB PC, allow WSL up to 10 GiB and 4 GiB of swap if both models are needed. Create or update
+`%UserProfile%\.wslconfig` with:
 
-The microphone permission is saved for the exact browser origin. Reuse the URL printed by the
-launcher (including the same host and port) and the same browser profile to avoid repeated prompts.
-Click **🎙️ Voice** to connect to the offline recognizer for the currently selected UI language.
-The audio is sent only to the Vosk service on this PC. Use `docker compose down` from this folder to
-stop both recognizer containers; add `--no-open` to the Python launcher to serve without opening a
-tab.
+```ini
+[wsl2]
+memory=10GB
+swap=4GB
+```
 
-Supported spoken phrases are deliberately limited to exact commands, reducing accidental scores
-from background conversation:
+Apply WSL memory changes with `wsl --shutdown`, then reopen Docker Desktop. This stops the WSL VM
+and Docker containers. If the PC has less memory, run only the language you need at a time to reduce
+memory use. Language selection on the scoreboard chooses which port it connects to; it does not
+automatically start or stop Docker containers.
 
-| English | 简体中文 |
-| :--- | :--- |
-| `pot red`, `score red`, `pot two reds` | `打红球`, `打进红球`, `打两颗红球` |
-| `pot yellow`, `pot green`, `pot brown`, `pot blue`, `pot pink`, `pot black` | `打黄球`, `打绿球`, `打咖啡球`, `打蓝球`, `打粉球`, `打黑球` |
-| `end visit`, `shot taken` | `本轮结束` |
-| `undo` | `撤销` |
-| `foul` | `犯规` |
-| `new frame`, `reset match` | `新一局`, `重置比赛` |
+Open PowerShell and run the following from the folder containing this README and `compose.yaml`:
+The path below assumes the repository is under `Documents\GitHub`; adjust it if you cloned it
+elsewhere.
+
+```powershell
+Set-Location (Join-Path $env:USERPROFILE 'Documents\GitHub\snooker\snooker_score_board')
+docker compose up -d
+docker compose ps
+```
+
+The first start downloads both model images; subsequent starts reuse them. Wait for the containers
+to show `Up` before turning on voice. To serve the main HTML page, open a second PowerShell window:
+
+```powershell
+Set-Location (Join-Path $env:USERPROFILE 'Documents\GitHub\snooker\snooker_score_board')
+python -m http.server 8360 --bind 127.0.0.1
+```
+
+Open <http://127.0.0.1:8360/snooker_scoreboard.html>. Allow microphone access and use the same URL
+and browser profile on future visits so the permission is remembered. Click **🎙️ Voice** to connect
+to the recognizer for the currently selected UI language. Audio is sent to the Vosk container on
+this PC only. The English service listens on `127.0.0.1:2700`; Chinese listens on `127.0.0.1:2701`.
+
+#### Docker Compose commands
+
+Run these commands from the scoreboard folder. If PowerShell is in another folder, first use the
+`Set-Location` command shown above; otherwise Compose may report that it cannot find a configuration
+file.
+
+```powershell
+# Start both services
+docker compose up -d
+
+# Run English only
+docker compose stop vosk-zh
+docker compose up -d vosk-en
+
+# Run Chinese only
+docker compose stop vosk-en
+docker compose up -d vosk-zh
+
+# Check which services are running
+docker compose ps
+
+# View recent service output
+docker compose logs --tail 30
+
+# Stop and remove both containers (downloaded images are kept)
+docker compose down
+```
+
+Starting one service does not stop the other automatically; use the matching `stop` command when
+switching languages to save memory. If voice reports unavailable just after starting a service,
+wait for its model to finish loading, then turn voice on again. The scoreboard's manual controls
+remain usable when Docker or Vosk is unavailable.
+
+Voice commands are matched against the recognized phrase, so speak one of the exact commands below.
+Select **EN** or **中文** on the scoreboard to match the language you are speaking; the selected
+language chooses both the recognizer and its command list. English matching ignores capitalization
+and surrounding or repeated spaces, and ignores a leading `the` if Vosk adds one to the transcript.
+Chinese commands do not contain spaces.
+
+| Action | English commands | 简体中文命令 |
+| :--- | :--- | :--- |
+| Pot one red | `pot red`, `score red`, `pot one red`; “score read” is also accepted | `打红球`, `打进红球` |
+| Pot two reds | `pot two reds`, `score two reds` | `打两颗红球`, `打进两颗红球` |
+| Pot yellow | `pot yellow`, `score yellow` | `打黄球` |
+| Pot green | `pot green`, `score green` | `打绿球` |
+| Pot brown | `pot brown`, `score brown` | `打咖啡球`, `打棕球` |
+| Pot blue | `pot blue`, `score blue` | `打蓝球` |
+| Pot pink | `pot pink`, `score pink` | `打粉球` |
+| Pot black | `pot black`, `score black` | `打黑球` |
+| End the visit / pass the turn | `end visit`, `shot taken` | `本轮结束`, `结束本轮` |
+| Undo the last action | `undo` | `撤销` |
+| Record a foul | `foul` | `犯规` |
+| Start a new frame | `new frame` | `新一局` |
+| Reset the match | `reset match` | `重置比赛` |
 
 Pot commands are checked against the current snooker rules before they change the score. New-frame
-and reset actions retain confirmation. If voice is off, unsupported, or the containers are not
-running, all existing touch controls continue to work.
+and reset actions retain confirmation. If the recognized words differ from the listed command, the
+scoreboard will report it as unknown rather than guessing. Commands that are not currently legal
+(for example, potting a color when a red is on) are rejected.
+
+If voice is off or the containers are not running, all existing touch controls continue to work.
 
 ### Languages
 

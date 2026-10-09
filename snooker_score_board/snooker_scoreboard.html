@@ -2042,9 +2042,10 @@
         }
 
         function parseOfflineVoiceCommand(transcript) {
-            const text = String(transcript || '').toLowerCase().trim()
+            let text = String(transcript || '').toLowerCase().trim()
                 .replace(/[.,!?;:，。！？、；：]/g, '')
                 .replace(/\s+/g, ' ');
+            if (lang === 'en') text = text.replace(/^the\s+/, '');
             const commands = lang === 'zh' ? {
                 '打红球': { type: 'pot', value: 1, reds: 1 },
                 '打进红球': { type: 'pot', value: 1, reds: 1 },
@@ -2066,6 +2067,7 @@
             } : {
                 'pot red': { type: 'pot', value: 1, reds: 1 },
                 'score red': { type: 'pot', value: 1, reds: 1 },
+                'score read': { type: 'pot', value: 1, reds: 1 },
                 'pot one red': { type: 'pot', value: 1, reds: 1 },
                 'pot two reds': { type: 'pot', value: 1, reds: 2 },
                 'score two reds': { type: 'pot', value: 1, reds: 2 },
@@ -2168,10 +2170,11 @@
                 ? ['打红球', '打进红球', '打两颗红球', '打进两颗红球', '打黄球', '打绿球',
                     '打咖啡球', '打棕球', '打蓝球', '打粉球', '打黑球', '本轮结束', '结束本轮',
                     '撤销', '犯规', '新一局', '重置比赛']
-                : ['pot red', 'score red', 'pot one red', 'pot two reds', 'score two reds',
+                : ['pot red', 'score red', 'score read', 'pot one red', 'pot two reds', 'score two reds',
                     'pot yellow', 'score yellow', 'pot green', 'score green', 'pot brown', 'score brown',
                     'pot blue', 'score blue', 'pot pink', 'score pink', 'pot black', 'score black',
                     'end visit', 'shot taken', 'undo', 'foul', 'new frame', 'reset match'];
+            if (lang === 'en') commands.push(...commands.map(command => `the ${command}`));
             const client = new window.VoskSpeechClient({
                 url: `ws://127.0.0.1:${port}`,
                 phraseList: commands,
